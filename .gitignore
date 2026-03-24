@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+.next/
+out/
+.env.local
+
+# Environment
+.env
+*.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Playwright / Gstack artifacts
+.playwright-mcp/
+.gstack/
+
+# OS
+.DS_Store
+Thumbs.db
