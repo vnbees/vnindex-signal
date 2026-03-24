@@ -10,7 +10,22 @@ async def is_trading_day(db: AsyncSession, d: date) -> bool:
             TradingCalendar.is_trading == True
         )
     )
-    return result.scalar_one_or_none() is not None
+    if result.scalar_one_or_none() is not None:
+        return True
+
+    # Fallback: check if calendar table has any data for this year
+    # If calendar is not seeded yet, allow weekdays (Mon-Fri) through
+    count_result = await db.execute(
+        select(func.count()).where(
+            TradingCalendar.trade_date >= date(d.year, 1, 1),
+            TradingCalendar.trade_date <= date(d.year, 12, 31),
+        )
+    )
+    count = count_result.scalar_one() or 0
+    if count == 0:
+        # Calendar not seeded for this year - fallback to weekday check
+        return d.weekday() < 5  # Mon=0..Fri=4
+    return False
 
 async def trading_days_between(db: AsyncSession, start: date, end: date) -> int:
     """Count trading days from start (exclusive) to end (inclusive)."""
