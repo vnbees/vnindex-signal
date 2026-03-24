@@ -39,3 +39,4 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+main-prompt.txt
