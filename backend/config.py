@@ -9,6 +9,15 @@ class Settings(BaseSettings):
     rate_limit_post: str = "10/minute"
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Auto-convert postgresql:// to postgresql+asyncpg:// for async support
+        if self.database_url.startswith("postgresql://"):
+            object.__setattr__(self, 'database_url', self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1))
+        # Keep sync URL without asyncpg
+        if self.database_url_sync.startswith("postgresql+asyncpg://"):
+            object.__setattr__(self, 'database_url_sync', self.database_url_sync.replace("postgresql+asyncpg://", "postgresql://", 1))
+
     class Config:
         env_file = ".env"
 
