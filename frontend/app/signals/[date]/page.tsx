@@ -4,7 +4,7 @@ import { SignalTable } from "@/components/SignalTable";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 interface Props {
   params: { date: string };

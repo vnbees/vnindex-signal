@@ -5,21 +5,27 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatPrice(price: number | null): string {
+export function formatPrice(price: number | string | null): string {
   if (price === null || price === undefined) return "—";
-  return new Intl.NumberFormat("vi-VN").format(price);
+  const n = Number(price);
+  if (isNaN(n)) return "—";
+  return new Intl.NumberFormat("vi-VN").format(n);
 }
 
-export function formatPnl(pnl: number | null): string {
+export function formatPnl(pnl: number | string | null): string {
   if (pnl === null || pnl === undefined) return "—";
-  const sign = pnl >= 0 ? "+" : "";
-  return `${sign}${pnl.toFixed(2)}%`;
+  const n = Number(pnl);
+  if (isNaN(n)) return "—";
+  const sign = n >= 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}%`;
 }
 
-export function getPnlClass(pnl: number | null): string {
+export function getPnlClass(pnl: number | string | null): string {
   if (pnl === null || pnl === undefined) return "text-slate-400";
-  if (pnl > 0) return "text-green-600 font-medium";
-  if (pnl < 0) return "text-red-600 font-medium";
+  const n = Number(pnl);
+  if (isNaN(n)) return "text-slate-400";
+  if (n > 0) return "text-green-600 font-medium";
+  if (n < 0) return "text-red-600 font-medium";
   return "text-slate-500";
 }
 

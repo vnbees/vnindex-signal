@@ -7,7 +7,7 @@ import { PnlChart } from "@/components/PnlChart";
 import { CorporateActionWarning } from "@/components/CorporateActionWarning";
 import { formatPrice, formatDate } from "@/lib/utils";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 interface Props {
   params: { date: string; symbol: string };

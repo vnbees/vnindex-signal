@@ -1,16 +1,10 @@
-import getConfig from "next/config";
-
 function getApiUrl(): string {
   if (typeof window === "undefined") {
-    // Server-side: thử serverRuntimeConfig trước (runtime, không bị bake)
-    const { serverRuntimeConfig } = getConfig() || {};
-    return serverRuntimeConfig?.apiUrlInternal || process.env.API_URL_INTERNAL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    // Server-side: đọc runtime env mỗi lần (không cache ở module level)
+    return process.env.API_URL_INTERNAL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
   }
-  // Client-side: chỉ dùng public env (baked lúc build)
   return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 }
-
-const API_URL = getApiUrl();
 
 export interface Signal {
   id: number;
@@ -69,9 +63,9 @@ export interface AccuracyStat {
 }
 
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${getApiUrl()}${path}`, {
     ...options,
-    next: { revalidate: 3600 },
+    cache: "no-store",
   });
   if (!res.ok) {
     throw new Error(`API error ${res.status}: ${path}`);

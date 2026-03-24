@@ -70,7 +70,7 @@ export function SignalTable({ signals, runDate }: Props) {
             {filtered.map((signal) => (
               <tr key={signal.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-3 py-2.5 text-slate-500 text-xs">
-                  {signal.market_cap_bil ? `${Math.round(signal.market_cap_bil / 1000)}B` : "—"}
+                  {signal.market_cap_bil ? `${Math.round(Number(signal.market_cap_bil) / 1000)}B` : "—"}
                 </td>
                 <td className="px-3 py-2.5 font-semibold">
                   <div className="flex items-center gap-1">

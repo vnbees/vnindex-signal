@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getRuns, type Run } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export default async function SignalsListPage() {
   let runs: Run[] = [];

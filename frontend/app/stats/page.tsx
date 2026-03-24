@@ -1,7 +1,7 @@
 import { getPnlStats, getAccuracyStats, type PnlStat, type AccuracyStat } from "@/lib/api";
 import { PnlStatsChart } from "@/components/PnlStatsChart";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export default async function StatsPage() {
   let pnlStats: PnlStat[] = [];

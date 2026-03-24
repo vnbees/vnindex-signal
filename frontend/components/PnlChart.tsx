@@ -25,12 +25,13 @@ interface Props {
 }
 
 export function PnlChart({ symbol, pnlD1, pnlD5, pnlD10, pnlD20 }: Props) {
+  const toNum = (v: number | null) => (v === null || v === undefined ? null : Number(v));
   const data: PnlPoint[] = [
     { day: "T+0", pnl: 0 },
-    { day: "T+1", pnl: pnlD1 },
-    { day: "T+5", pnl: pnlD5 },
-    { day: "T+10", pnl: pnlD10 },
-    { day: "T+20", pnl: pnlD20 },
+    { day: "T+1", pnl: toNum(pnlD1) },
+    { day: "T+5", pnl: toNum(pnlD5) },
+    { day: "T+10", pnl: toNum(pnlD10) },
+    { day: "T+20", pnl: toNum(pnlD20) },
   ].filter((d) => d.pnl !== null || d.day === "T+0");
 
   if (data.length <= 1) {
@@ -53,7 +54,7 @@ export function PnlChart({ symbol, pnlD1, pnlD5, pnlD10, pnlD20 }: Props) {
           type="monotone"
           dataKey="pnl"
           stroke={
-            (pnlD20 ?? pnlD10 ?? pnlD5 ?? pnlD1 ?? 0) >= 0 ? "#16a34a" : "#dc2626"
+            Number(pnlD20 ?? pnlD10 ?? pnlD5 ?? pnlD1 ?? 0) >= 0 ? "#16a34a" : "#dc2626"
           }
           strokeWidth={2}
           dot={{ r: 4 }}
