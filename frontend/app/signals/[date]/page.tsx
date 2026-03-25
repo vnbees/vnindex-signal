@@ -51,7 +51,7 @@ export default async function SignalsDatePage({ params }: Props) {
       <SignalTable signals={signals} runDate={date} />
 
       <p className="text-xs text-slate-400 mt-4">
-        * PnL tính từ giá mở cửa T+1 (giá thực tế có thể mua được). Cập nhật mỗi giờ.
+        * PnL tính từ giá mở cửa T+1 (giá thực tế có thể mua được). Cập nhật mỗi ngày từ 15h30-16h30.
       </p>
     </div>
   );

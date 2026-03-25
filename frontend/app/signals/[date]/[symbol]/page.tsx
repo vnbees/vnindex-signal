@@ -53,25 +53,9 @@ export default async function SignalDetailPage({ params }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Scores */}
         <div className="bg-white rounded-lg border border-slate-200 p-5">
-          <h2 className="font-semibold text-slate-700 mb-4">Điểm thành phần</h2>
+          <h2 className="font-semibold text-slate-700 mb-4">Điểm tổng</h2>
           <div className="space-y-3">
-            {[
-              { label: "Tài chính (TC)", score: signal.score_financial, max: 2 },
-              { label: "Mùa vụ (SS)", score: signal.score_seasonal, max: 2 },
-              { label: "Kỹ thuật (KT)", score: signal.score_technical, max: 1 },
-              { label: "Dòng tiền (DT)", score: signal.score_cashflow, max: 1 },
-            ].map(({ label, score, max }) => (
-              <div key={label} className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">{label}</span>
-                <div className="flex items-center gap-2">
-                  <span className={`text-sm font-medium ${score > 0 ? "text-green-600" : score < 0 ? "text-red-600" : "text-slate-400"}`}>
-                    {score > 0 ? `+${score}` : score}
-                  </span>
-                  <span className="text-xs text-slate-400">/ {max}</span>
-                </div>
-              </div>
-            ))}
-            <div className="pt-2 border-t border-slate-100 flex justify-between font-semibold">
+            <div className="flex justify-between font-semibold">
               <span className="text-slate-700">Tổng</span>
               <span className={signal.score_total > 0 ? "text-green-700" : signal.score_total < 0 ? "text-red-700" : "text-slate-500"}>
                 {signal.score_total > 0 ? `+${signal.score_total}` : signal.score_total}
@@ -121,7 +105,7 @@ export default async function SignalDetailPage({ params }: Props) {
             pnlD20={signal.pnl_d20}
           />
           <p className="text-xs text-slate-400 mt-2">
-            * PnL tính từ giá mở cửa T+1
+            * PnL tính từ giá mở cửa T+1 (giá thực tế có thể mua được). Cập nhật mỗi ngày từ 15h30-16h30.
           </p>
         </div>
 

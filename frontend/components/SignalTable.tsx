@@ -6,7 +6,6 @@ import type { Signal } from "@/lib/api";
 import { RecommendationBadge } from "./RecommendationBadge";
 import { PnlBadge } from "./PnlBadge";
 import { CorporateActionWarning } from "./CorporateActionWarning";
-import { ScoreCell } from "./ScoreCell";
 import { formatPrice, formatDate } from "@/lib/utils";
 
 interface Props {
@@ -54,11 +53,6 @@ export function SignalTable({ signals, runDate }: Props) {
             <tr>
               <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Vốn hoá</th>
               <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Mã</th>
-              <th className="px-3 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">TC</th>
-              <th className="px-3 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">SS</th>
-              <th className="px-3 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">KT</th>
-              <th className="px-3 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">DT</th>
-              <th className="px-3 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Tổng</th>
               <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">KN</th>
               <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Giá đóng</th>
               <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide" title="Tính từ giá mở cửa T+1">T+1</th>
@@ -82,21 +76,6 @@ export function SignalTable({ signals, runDate }: Props) {
                       {signal.symbol}
                     </Link>
                   </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <ScoreCell score={signal.score_financial} />
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <ScoreCell score={signal.score_seasonal} />
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <ScoreCell score={signal.score_technical} />
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <ScoreCell score={signal.score_cashflow} />
-                </td>
-                <td className="px-3 py-2.5 text-center font-bold">
-                  <ScoreCell score={signal.score_total} />
                 </td>
                 <td className="px-3 py-2.5">
                   <RecommendationBadge recommendation={signal.recommendation} />
