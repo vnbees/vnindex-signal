@@ -19,7 +19,7 @@ export default function HomePage() {
 
   return (
     <div className="text-center py-20">
-      <h1 className="text-2xl font-bold text-slate-700 mb-4">VNINDEX Signal</h1>
+      <h1 className="text-2xl font-bold text-slate-700 mb-4">ViiStock</h1>
       <p className="text-slate-500">Đang tải dữ liệu...</p>
     </div>
   );

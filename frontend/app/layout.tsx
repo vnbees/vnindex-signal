@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "VNINDEX Signal",
+  title: "ViiStock",
   description: "Tín hiệu mua/bán cổ phiếu HOSE",
 };
 
@@ -16,7 +16,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-slate-50">
         <nav className="bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-6">
           <a href="/" className="font-bold text-lg text-slate-800">
-            📊 VNINDEX Signal
+            📊 ViiStock
           </a>
           <a href="/signals" className="text-slate-600 hover:text-slate-900 text-sm">
             Tín hiệu
