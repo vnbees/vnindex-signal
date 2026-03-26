@@ -32,4 +32,5 @@ healthcheckTimeout = 30
 
 [services.variables]
 NEXT_PUBLIC_API_URL = "https://${{backend.RAILWAY_PUBLIC_DOMAIN}}"
+NEXT_PUBLIC_GA_ID = "G-G6MDQP55NB"
 PORT = "3000"
