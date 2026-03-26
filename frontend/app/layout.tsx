@@ -25,6 +25,23 @@ export default function RootLayout({
             Thống kê
           </a>
         </nav>
+        {/* Trust Bar */}
+        <div className="bg-white border-b border-slate-100 px-4 py-2.5">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-slate-500">
+            <span className="flex items-center gap-1.5">
+              <span className="text-blue-500">✓</span>
+              Mô hình proprietary (độc quyền) đã được kiểm tra trên dữ liệu lịch sử VN-Index
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="text-blue-500">✓</span>
+              Cập nhật tín hiệu hàng ngày từ 15h30–16h30
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="text-blue-500">✓</span>
+              PnL tính từ giá thực tế (giá mở cửa T+1)
+            </span>
+          </div>
+        </div>
         <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
       </body>
     </html>

@@ -48,6 +48,15 @@ export default async function SignalsDatePage({ params }: Props) {
         </Link>
       </div>
 
+      {/* Disclaimer Card */}
+      <div className="mb-4 bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex gap-2.5">
+        <span className="text-blue-400 flex-shrink-0 mt-0.5">ℹ️</span>
+        <p className="text-xs text-blue-800 leading-relaxed">
+          <span className="font-medium">Mô hình phân tích kỹ thuật độc quyền</span> đã kiểm tra trên dữ liệu lịch sử VN-Index.{" "}
+          Hiệu suất quá khứ không đảm bảo kết quả tương lai. Không phải lời khuyên đầu tư — luôn tự nghiên cứu và quản lý rủi ro.
+        </p>
+      </div>
+
       <SignalTable signals={signals} runDate={date} />
 
       <p className="text-xs text-slate-400 mt-4">
