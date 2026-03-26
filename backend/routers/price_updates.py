@@ -1,13 +1,15 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from pydantic import BaseModel
 from database import get_db
 from models.signal import Signal, AnalysisRun, AuditLog
 from models.price_tracking import PriceTracking
+from models.trading_calendar import TradingCalendar
 from schemas.signal_output import PendingPriceUpdate
 from services.calendar_service import is_trading_day, trading_days_between, get_trading_days_needed
 from services.pnl_service import calculate_pnl_pct, is_corporate_action
@@ -160,3 +162,65 @@ async def refresh_views(
     await db.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY signal_pnl_summary"))
     await db.commit()
     return {"status": "refreshed"}
+
+
+@router.post("/api/v1/admin/seed-calendar")
+async def seed_calendar(
+    db: AsyncSession = Depends(get_db),
+    api_key_id: int = Depends(verify_api_key)
+):
+    """Seed trading_calendar with weekday trading days from 2015 to 2027."""
+    FIXED_HOLIDAYS = [(1, 1), (4, 30), (5, 1), (9, 2)]
+    SPECIFIC_HOLIDAYS = {
+        date(2015, 2, 18), date(2015, 2, 19), date(2015, 2, 20), date(2015, 2, 21),
+        date(2015, 2, 22), date(2015, 2, 23), date(2015, 4, 2),
+        date(2016, 2, 7), date(2016, 2, 8), date(2016, 2, 9), date(2016, 2, 10),
+        date(2016, 2, 11), date(2016, 2, 12), date(2016, 4, 16),
+        date(2017, 1, 26), date(2017, 1, 27), date(2017, 1, 28), date(2017, 1, 29),
+        date(2017, 1, 30), date(2017, 1, 31), date(2017, 4, 6),
+        date(2018, 2, 14), date(2018, 2, 15), date(2018, 2, 16), date(2018, 2, 17),
+        date(2018, 2, 18), date(2018, 2, 19), date(2018, 4, 25),
+        date(2019, 2, 4), date(2019, 2, 5), date(2019, 2, 6), date(2019, 2, 7),
+        date(2019, 2, 8), date(2019, 2, 9), date(2019, 4, 14),
+        date(2020, 1, 23), date(2020, 1, 24), date(2020, 1, 25), date(2020, 1, 26),
+        date(2020, 1, 27), date(2020, 1, 28), date(2020, 4, 2),
+        date(2021, 2, 10), date(2021, 2, 11), date(2021, 2, 12), date(2021, 2, 13),
+        date(2021, 2, 14), date(2021, 2, 15), date(2021, 4, 21),
+        date(2022, 1, 29), date(2022, 1, 30), date(2022, 1, 31), date(2022, 2, 1),
+        date(2022, 2, 2), date(2022, 2, 3), date(2022, 4, 10),
+        date(2023, 1, 20), date(2023, 1, 21), date(2023, 1, 22), date(2023, 1, 23),
+        date(2023, 1, 24), date(2023, 1, 25), date(2023, 4, 29),
+        date(2024, 2, 8), date(2024, 2, 9), date(2024, 2, 10), date(2024, 2, 11),
+        date(2024, 2, 12), date(2024, 2, 13), date(2024, 4, 18),
+        date(2025, 1, 27), date(2025, 1, 28), date(2025, 1, 29), date(2025, 1, 30),
+        date(2025, 1, 31), date(2025, 2, 3), date(2025, 4, 7),
+        date(2026, 2, 16), date(2026, 2, 17), date(2026, 2, 18), date(2026, 2, 19),
+        date(2026, 2, 20), date(2026, 2, 23), date(2026, 4, 16),
+        date(2027, 2, 5), date(2027, 2, 6), date(2027, 2, 7), date(2027, 2, 8),
+        date(2027, 2, 9), date(2027, 2, 10), date(2027, 4, 6),
+    }
+
+    start = date(2015, 1, 1)
+    end = date(2027, 12, 31)
+    rows = []
+    current = start
+    while current <= end:
+        is_weekend = current.weekday() >= 5
+        is_fixed = (current.month, current.day) in FIXED_HOLIDAYS
+        is_specific = current in SPECIFIC_HOLIDAYS
+        is_trading = not (is_weekend or is_fixed or is_specific)
+        rows.append({"trade_date": current, "is_trading": is_trading, "note": None})
+        current += timedelta(days=1)
+
+    batch_size = 500
+    for i in range(0, len(rows), batch_size):
+        batch = rows[i:i + batch_size]
+        stmt = pg_insert(TradingCalendar).values(batch).on_conflict_do_update(
+            index_elements=["trade_date"],
+            set_={"is_trading": pg_insert(TradingCalendar).excluded.is_trading}
+        )
+        await db.execute(stmt)
+    await db.commit()
+
+    trading_count = sum(1 for r in rows if r["is_trading"])
+    return {"seeded": len(rows), "trading_days": trading_count}
