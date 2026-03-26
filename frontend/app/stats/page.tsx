@@ -20,13 +20,6 @@ export default async function StatsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-slate-800">Thống kê hiệu suất</h1>
-        <a
-          href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/export/csv`}
-          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
-          download
-        >
-          📥 Export CSV
-        </a>
       </div>
 
       {/* PnL by Recommendation */}
