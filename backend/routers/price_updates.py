@@ -48,7 +48,7 @@ async def get_pending_updates(
         )
         existing_dates = {row[0] for row in existing_result.fetchall()}
 
-        needed = [d for d in track_dates if d not in existing_dates]
+        needed = [d for d in track_dates if d not in existing_dates and d <= date.today()]
         if needed:
             pending.append(PendingPriceUpdate(
                 signal_id=signal.id,
