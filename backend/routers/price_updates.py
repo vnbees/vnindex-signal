@@ -29,7 +29,7 @@ class PriceUpdateBatch(BaseModel):
 
 @router.get("/api/v1/price-updates/pending")
 async def get_pending_updates(
-    limit: int = 50,
+    limit: int = 10000,
     db: AsyncSession = Depends(get_db)
 ):
     """Return signals that need price tracking data."""
