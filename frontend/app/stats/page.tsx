@@ -34,8 +34,7 @@ export default async function StatsPage() {
                   <tr className="border-b border-slate-100">
                     <th className="text-left py-2 px-3 text-slate-500 font-medium">Khuyến nghị</th>
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">Số lượng</th>
-                    <th className="text-right py-2 px-3 text-slate-500 font-medium">T+1</th>
-                    <th className="text-right py-2 px-3 text-slate-500 font-medium">T+5</th>
+                    <th className="text-right py-2 px-3 text-slate-500 font-medium">T+3</th>
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">T+10</th>
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">T+20</th>
                   </tr>
@@ -45,11 +44,8 @@ export default async function StatsPage() {
                     <tr key={stat.recommendation} className="border-b border-slate-50">
                       <td className="py-2 px-3 font-medium">{stat.recommendation}</td>
                       <td className="py-2 px-3 text-right text-slate-500">{stat.total}</td>
-                      <td className={`py-2 px-3 text-right ${(stat.avg_pnl_d1 ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
-                        {stat.avg_pnl_d1 !== null ? `${stat.avg_pnl_d1 >= 0 ? "+" : ""}${stat.avg_pnl_d1}%` : "—"}
-                      </td>
-                      <td className={`py-2 px-3 text-right ${(stat.avg_pnl_d5 ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
-                        {stat.avg_pnl_d5 !== null ? `${stat.avg_pnl_d5 >= 0 ? "+" : ""}${stat.avg_pnl_d5}%` : "—"}
+                      <td className={`py-2 px-3 text-right ${(stat.avg_pnl_d3 ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        {stat.avg_pnl_d3 !== null ? `${stat.avg_pnl_d3 >= 0 ? "+" : ""}${stat.avg_pnl_d3}%` : "—"}
                       </td>
                       <td className={`py-2 px-3 text-right ${(stat.avg_pnl_d10 ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
                         {stat.avg_pnl_d10 !== null ? `${stat.avg_pnl_d10 >= 0 ? "+" : ""}${stat.avg_pnl_d10}%` : "—"}
@@ -78,8 +74,8 @@ export default async function StatsPage() {
                 <tr className="border-b border-slate-100">
                   <th className="text-left py-2 px-3 text-slate-500 font-medium">Khuyến nghị</th>
                   <th className="text-right py-2 px-3 text-slate-500 font-medium">Tổng</th>
-                  <th className="text-right py-2 px-3 text-slate-500 font-medium">Win T+1</th>
-                  <th className="text-right py-2 px-3 text-slate-500 font-medium">Win T+5</th>
+                  <th className="text-right py-2 px-3 text-slate-500 font-medium">Win T+3</th>
+                  <th className="text-right py-2 px-3 text-slate-500 font-medium">Win T+10</th>
                   <th className="text-right py-2 px-3 text-slate-500 font-medium">Win T+20</th>
                 </tr>
               </thead>
@@ -89,10 +85,10 @@ export default async function StatsPage() {
                     <td className="py-2 px-3 font-medium">{stat.recommendation}</td>
                     <td className="py-2 px-3 text-right text-slate-500">{stat.total}</td>
                     <td className="py-2 px-3 text-right">
-                      {stat.winrate_d1 !== null ? `${stat.winrate_d1}%` : "—"}
+                      {stat.winrate_d3 !== null ? `${stat.winrate_d3}%` : "—"}
                     </td>
                     <td className="py-2 px-3 text-right">
-                      {stat.winrate_d5 !== null ? `${stat.winrate_d5}%` : "—"}
+                      {stat.winrate_d10 !== null ? `${stat.winrate_d10}%` : "—"}
                     </td>
                     <td className="py-2 px-3 text-right">
                       {stat.winrate_d20 !== null ? `${stat.winrate_d20}%` : "—"}

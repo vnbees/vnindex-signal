@@ -22,8 +22,7 @@ export interface Signal {
   price_open_t1: number | null;
   market_cap_bil: number | null;
   has_corporate_action: boolean;
-  pnl_d1: number | null;
-  pnl_d5: number | null;
+  pnl_d3: number | null;
   pnl_d10: number | null;
   pnl_d20: number | null;
   latest_pnl_pct: number | null;
@@ -44,8 +43,7 @@ export interface Run {
 export interface PnlStat {
   recommendation: string;
   total: number;
-  avg_pnl_d1: number | null;
-  avg_pnl_d5: number | null;
+  avg_pnl_d3: number | null;
   avg_pnl_d10: number | null;
   avg_pnl_d20: number | null;
   avg_latest_pnl: number | null;
@@ -54,11 +52,11 @@ export interface PnlStat {
 export interface AccuracyStat {
   recommendation: string;
   total: number;
-  win_d1: number;
-  win_d5: number;
+  win_d3: number;
+  win_d10: number;
   win_d20: number;
-  winrate_d1: number | null;
-  winrate_d5: number | null;
+  winrate_d3: number | null;
+  winrate_d10: number | null;
   winrate_d20: number | null;
 }
 

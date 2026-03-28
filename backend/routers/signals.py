@@ -73,7 +73,7 @@ async def get_signals_for_date(
 
     # Get PnL data from materialized view
     pnl_result = await db.execute(
-        text("SELECT signal_id, pnl_d1, pnl_d5, pnl_d10, pnl_d20, latest_pnl_pct FROM signal_pnl_summary WHERE run_date = :run_date"),
+        text("SELECT signal_id, pnl_d3, pnl_d10, pnl_d20, latest_pnl_pct FROM signal_pnl_summary WHERE run_date = :run_date"),
         {"run_date": run_date}
     )
     pnl_map = {row.signal_id: row for row in pnl_result.fetchall()}
@@ -97,8 +97,7 @@ async def get_signals_for_date(
             price_open_t1=s.price_open_t1,
             market_cap_bil=s.market_cap_bil,
             has_corporate_action=s.has_corporate_action or False,
-            pnl_d1=pnl.pnl_d1 if pnl else None,
-            pnl_d5=pnl.pnl_d5 if pnl else None,
+            pnl_d3=pnl.pnl_d3 if pnl else None,
             pnl_d10=pnl.pnl_d10 if pnl else None,
             pnl_d20=pnl.pnl_d20 if pnl else None,
             latest_pnl_pct=pnl.latest_pnl_pct if pnl else None,
@@ -122,7 +121,7 @@ async def get_signal_detail(
         raise HTTPException(status_code=404, detail="Signal not found")
 
     pnl_result = await db.execute(
-        text("SELECT pnl_d1, pnl_d5, pnl_d10, pnl_d20, latest_pnl_pct FROM signal_pnl_summary WHERE run_date = :run_date AND symbol = :symbol"),
+        text("SELECT pnl_d3, pnl_d10, pnl_d20, latest_pnl_pct FROM signal_pnl_summary WHERE run_date = :run_date AND symbol = :symbol"),
         {"run_date": run_date, "symbol": symbol.upper()}
     )
     pnl = pnl_result.fetchone()
@@ -147,8 +146,7 @@ async def get_signal_detail(
         detail_technical=signal.detail_technical,
         detail_cashflow=signal.detail_cashflow,
         detail_seasonal=signal.detail_seasonal,
-        pnl_d1=pnl.pnl_d1 if pnl else None,
-        pnl_d5=pnl.pnl_d5 if pnl else None,
+        pnl_d3=pnl.pnl_d3 if pnl else None,
         pnl_d10=pnl.pnl_d10 if pnl else None,
         pnl_d20=pnl.pnl_d20 if pnl else None,
         latest_pnl_pct=pnl.latest_pnl_pct if pnl else None,

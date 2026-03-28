@@ -80,8 +80,7 @@ export default async function SignalDetailPage({ params }: Props) {
             </div>
             <div className="pt-2 border-t border-slate-100 space-y-2">
               {[
-                { label: "T+1", pnl: signal.pnl_d1 },
-                { label: "T+5", pnl: signal.pnl_d5 },
+                { label: "T+3", pnl: signal.pnl_d3 },
                 { label: "T+10", pnl: signal.pnl_d10 },
                 { label: "T+20", pnl: signal.pnl_d20 },
               ].map(({ label, pnl }) => (
@@ -99,8 +98,7 @@ export default async function SignalDetailPage({ params }: Props) {
           <h2 className="font-semibold text-slate-700 mb-4">Biểu đồ PnL</h2>
           <PnlChart
             symbol={signal.symbol}
-            pnlD1={signal.pnl_d1}
-            pnlD5={signal.pnl_d5}
+            pnlD3={signal.pnl_d3}
             pnlD10={signal.pnl_d10}
             pnlD20={signal.pnl_d20}
           />

@@ -55,8 +55,8 @@ export function SignalTable({ signals, runDate }: Props) {
               <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Mã</th>
               <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">KN</th>
               <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Giá đóng</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide" title="Tính từ giá mở cửa T+1">T+1</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide" title="Tính từ giá mở cửa T+1">T+5</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide" title="Tính từ giá mở cửa T+1">T+3</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide" title="Tính từ giá mở cửa T+1">T+10</th>
               <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide" title="Tính từ giá mở cửa T+1">T+20</th>
             </tr>
           </thead>
@@ -84,10 +84,10 @@ export function SignalTable({ signals, runDate }: Props) {
                   {formatPrice(signal.price_close_signal_date)}
                 </td>
                 <td className="px-3 py-2.5 text-right">
-                  <PnlBadge pnl={signal.pnl_d1} label="T+1" />
+                  <PnlBadge pnl={signal.pnl_d3} label="T+3" />
                 </td>
                 <td className="px-3 py-2.5 text-right">
-                  <PnlBadge pnl={signal.pnl_d5} label="T+5" />
+                  <PnlBadge pnl={signal.pnl_d10} label="T+10" />
                 </td>
                 <td className="px-3 py-2.5 text-right">
                   <PnlBadge pnl={signal.pnl_d20} label="T+20" />

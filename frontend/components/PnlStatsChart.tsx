@@ -20,8 +20,8 @@ interface Props {
 export function PnlStatsChart({ data }: Props) {
   const chartData = data.map((d) => ({
     name: d.recommendation,
-    "T+1": d.avg_pnl_d1,
-    "T+5": d.avg_pnl_d5,
+    "T+3": d.avg_pnl_d3,
+    "T+10": d.avg_pnl_d10,
     "T+20": d.avg_pnl_d20,
   }));
 
@@ -34,8 +34,8 @@ export function PnlStatsChart({ data }: Props) {
         <Tooltip formatter={(v: number) => [`${v?.toFixed(2)}%`]} />
         <Legend />
         <ReferenceLine y={0} stroke="#94a3b8" />
-        <Bar dataKey="T+1" fill="#60a5fa" />
-        <Bar dataKey="T+5" fill="#34d399" />
+        <Bar dataKey="T+3" fill="#60a5fa" />
+        <Bar dataKey="T+10" fill="#34d399" />
         <Bar dataKey="T+20" fill="#a78bfa" />
       </BarChart>
     </ResponsiveContainer>

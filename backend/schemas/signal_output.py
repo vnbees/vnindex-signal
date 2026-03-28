@@ -19,8 +19,7 @@ class SignalListItem(BaseModel):
     price_open_t1: Optional[Decimal]
     market_cap_bil: Optional[Decimal]
     has_corporate_action: bool
-    pnl_d1: Optional[Decimal] = None
-    pnl_d5: Optional[Decimal] = None
+    pnl_d3: Optional[Decimal] = None
     pnl_d10: Optional[Decimal] = None
     pnl_d20: Optional[Decimal] = None
     latest_pnl_pct: Optional[Decimal] = None
