@@ -40,7 +40,7 @@ async def trading_days_between(db: AsyncSession, start: date, end: date) -> int:
 
 async def get_trading_days_needed(db: AsyncSession, run_date: date, hold_days: int) -> list[date]:
     """Return list of trading dates T+1, T+5, T+10, T+20 from run_date."""
-    targets = [1, 5, 10, 20]
+    targets = [1, 3, 10, 20]
     result = await db.execute(
         select(TradingCalendar.trade_date).where(
             TradingCalendar.trade_date > run_date,
