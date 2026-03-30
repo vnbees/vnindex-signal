@@ -79,7 +79,13 @@ export default async function AdminFeedbackPage() {
         <p className="mt-3 text-sm text-tv-muted">
           Để xem danh sách, cấu hình biến môi trường{" "}
           <code className="rounded bg-tv-panel-hover px-1 py-0.5 text-tv-text">ADMIN_API_KEY</code>{" "}
-          trên server frontend (giá trị trùng với một API key hợp lệ trong backend).
+          trên server frontend (Railway: service frontend → Variables). Giá trị là chuỗi key thô{" "}
+          <code className="rounded bg-tv-panel-hover px-1 py-0.5 text-xs">sk-vnindex-…</code> trùng
+          với một API key đang có trong backend (tạo bằng{" "}
+          <code className="rounded bg-tv-panel-hover px-1 py-0.5 text-xs">
+            backend/scripts/create_api_key.py
+          </code>{" "}
+          nếu chưa có), rồi redeploy frontend.
         </p>
       </div>
     );
