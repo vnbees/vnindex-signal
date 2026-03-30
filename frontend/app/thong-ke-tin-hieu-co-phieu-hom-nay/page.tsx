@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import { getPnlStats, getAccuracyStats, type PnlStat, type AccuracyStat } from "@/lib/api";
 import { PnlStatsChart } from "@/components/PnlStatsChart";
 
 export const dynamic = "force-dynamic";
 
-export default async function StatsPage() {
+export const metadata: Metadata = {
+  title: "Thống kê tín hiệu cổ phiếu hôm nay",
+  description:
+    "Thống kê hiệu suất PnL và win rate theo khuyến nghị ViiStock — dữ liệu HOSE, cập nhật hàng ngày.",
+};
+
+export default async function ThongKeTinHieuPage() {
   let pnlStats: PnlStat[] = [];
   let accuracyStats: AccuracyStat[] = [];
 

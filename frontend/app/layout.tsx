@@ -42,7 +42,10 @@ export default function RootLayout({
           <a href="/signals" className="text-slate-600 hover:text-slate-900 text-sm">
             Tín hiệu
           </a>
-          <a href="/stats" className="text-slate-600 hover:text-slate-900 text-sm">
+          <a
+            href="/thong-ke-tin-hieu-co-phieu-hom-nay"
+            className="text-slate-600 hover:text-slate-900 text-sm"
+          >
             Thống kê
           </a>
         </nav>

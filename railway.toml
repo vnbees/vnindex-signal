@@ -27,7 +27,7 @@ dockerfilePath = "Dockerfile"
 
 [services.deploy]
 startCommand = "node server.js"
-healthcheckPath = "/"
+healthcheckPath = "/thong-ke-tin-hieu-co-phieu-hom-nay"
 healthcheckTimeout = 30
 
 [services.variables]

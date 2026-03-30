@@ -1,26 +1,5 @@
-"use client";
-
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { redirect } from "next/navigation";
 
 export default function HomePage() {
-  const router = useRouter();
-
-  useEffect(() => {
-    fetch("/api/latest-run")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.run_date) {
-          router.replace(`/signals/${data.run_date}`);
-        }
-      })
-      .catch(() => {});
-  }, [router]);
-
-  return (
-    <div className="text-center py-20">
-      <h1 className="text-2xl font-bold text-slate-700 mb-4">ViiStock</h1>
-      <p className="text-slate-500">Đang tải dữ liệu...</p>
-    </div>
-  );
+  redirect("/thong-ke-tin-hieu-co-phieu-hom-nay");
 }
