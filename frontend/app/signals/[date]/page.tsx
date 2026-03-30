@@ -13,7 +13,6 @@ interface Props {
 export default async function SignalsDatePage({ params }: Props) {
   const { date } = params;
 
-  // Validate date format
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     notFound();
   }
@@ -30,36 +29,34 @@ export default async function SignalsDatePage({ params }: Props) {
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">
-            📅 {formatDate(date)}
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            {signals.length} mã phân tích · {buyCount} Mua · {avoidCount} Tránh/Bán
+          <h1 className="text-xl font-semibold text-tv-text tracking-tight">{formatDate(date)}</h1>
+          <p className="text-tv-muted text-sm mt-1">
+            {signals.length} mã phân tích · <span className="text-tv-up">{buyCount} Mua</span>
+            {" · "}
+            <span className="text-tv-down">{avoidCount} Tránh/Bán</span>
           </p>
         </div>
         <Link
           href="/signals"
-          className="text-sm text-slate-500 hover:text-slate-700"
+          className="text-sm text-tv-muted hover:text-tv-accent transition-colors"
         >
           ← Danh sách ngày
         </Link>
       </div>
 
-      {/* Disclaimer Card */}
-      <div className="mb-4 bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex gap-2.5">
-        <span className="text-blue-400 flex-shrink-0 mt-0.5">ℹ️</span>
-        <p className="text-xs text-blue-800 leading-relaxed">
-          <span className="font-medium">Mô hình phân tích kỹ thuật độc quyền</span> đã kiểm tra trên dữ liệu lịch sử VN-Index.{" "}
+      <div className="mb-4 rounded-lg border border-tv-info-border bg-tv-info-bg px-4 py-3 flex items-center gap-2.5">
+        <span className="text-tv-accent flex-shrink-0">ℹ</span>
+        <p className="text-xs text-tv-text/90 leading-relaxed">
+          <span className="font-medium text-tv-text">Mô hình phân tích kỹ thuật độc quyền</span> đã kiểm tra trên dữ liệu lịch sử VN-Index.{" "}
           Hiệu suất quá khứ không đảm bảo kết quả tương lai. Không phải lời khuyên đầu tư — luôn tự nghiên cứu và quản lý rủi ro.
         </p>
       </div>
 
       <SignalTable signals={signals} runDate={date} />
 
-      <p className="text-xs text-slate-400 mt-4">
+      <p className="text-xs text-tv-muted mt-4">
         * PnL tính từ giá mở cửa T+1 (giá thực tế có thể mua được). Cập nhật mỗi ngày từ 15h30-16h30.
       </p>
     </div>

@@ -8,7 +8,7 @@ export function CorporateActionWarning({ show, symbol }: Props) {
   return (
     <span
       title={`${symbol ?? ""} - Có thể có split/dividend — cần review thủ công`}
-      className="text-amber-500 cursor-help"
+      className="text-amber-400 cursor-help"
     >
       ⚠️
     </span>

@@ -6,7 +6,7 @@ import type { Signal } from "@/lib/api";
 import { RecommendationBadge } from "./RecommendationBadge";
 import { PnlBadge } from "./PnlBadge";
 import { CorporateActionWarning } from "./CorporateActionWarning";
-import { formatPrice, formatDate } from "@/lib/utils";
+import { formatPrice } from "@/lib/utils";
 
 interface Props {
   signals: Signal[];
@@ -15,11 +15,11 @@ interface Props {
 
 const FILTERS = [
   { label: "Tất cả", value: "" },
-  { label: "🟢🟢 Mua mạnh", value: "BUY_STRONG" },
-  { label: "🟢 Mua", value: "BUY" },
-  { label: "🟡 Theo dõi", value: "HOLD" },
-  { label: "🟠 Tránh", value: "AVOID" },
-  { label: "🔴 Bán", value: "SELL" },
+  { label: "Mua mạnh", value: "BUY_STRONG" },
+  { label: "Mua", value: "BUY" },
+  { label: "Theo dõi", value: "HOLD" },
+  { label: "Tránh", value: "AVOID" },
+  { label: "Bán", value: "SELL" },
 ];
 
 export function SignalTable({ signals, runDate }: Props) {
@@ -29,16 +29,16 @@ export function SignalTable({ signals, runDate }: Props) {
 
   return (
     <div>
-      {/* Filter tabs */}
-      <div className="flex gap-2 mb-4 flex-wrap">
+      <div className="inline-flex flex-wrap gap-0 p-1 mb-4 rounded-lg bg-tv-panel border border-tv-border">
         {FILTERS.map((f) => (
           <button
             key={f.value}
+            type="button"
             onClick={() => setFilter(f.value)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
               filter === f.value
-                ? "bg-slate-800 text-white"
-                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                ? "bg-tv-accent text-white shadow-sm"
+                : "text-tv-muted hover:text-tv-text hover:bg-tv-panel-hover/80"
             }`}
           >
             {f.label}
@@ -46,24 +46,40 @@ export function SignalTable({ signals, runDate }: Props) {
         ))}
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-lg border border-tv-border bg-tv-panel">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
+          <thead className="border-b border-tv-border tv-table-head">
             <tr>
-              <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Vốn hoá</th>
-              <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Mã</th>
-              <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">KN</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Giá đóng</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide" title="Tính từ giá mở cửa T+1">T+3</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide" title="Tính từ giá mở cửa T+1">T+10</th>
-              <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide" title="Tính từ giá mở cửa T+1">T+20</th>
+              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide">
+                Vốn hoá
+              </th>
+              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide">Mã</th>
+              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide">KN</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide">Giá đóng</th>
+              <th
+                className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide"
+                title="Tính từ giá mở cửa T+1"
+              >
+                T+3
+              </th>
+              <th
+                className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide"
+                title="Tính từ giá mở cửa T+1"
+              >
+                T+10
+              </th>
+              <th
+                className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide"
+                title="Tính từ giá mở cửa T+1"
+              >
+                T+20
+              </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-tv-border/80">
             {filtered.map((signal) => (
-              <tr key={signal.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-3 py-2.5 text-slate-500 text-xs">
+              <tr key={signal.id} className="hover:bg-tv-panel-hover/50 transition-colors">
+                <td className="px-3 py-2.5 text-tv-muted text-xs">
                   {signal.market_cap_bil ? `${Math.round(Number(signal.market_cap_bil) / 1000)}B` : "—"}
                 </td>
                 <td className="px-3 py-2.5 font-semibold">
@@ -71,7 +87,7 @@ export function SignalTable({ signals, runDate }: Props) {
                     <CorporateActionWarning show={signal.has_corporate_action} symbol={signal.symbol} />
                     <Link
                       href={`/signals/${runDate}/${signal.symbol}`}
-                      className="text-blue-600 hover:underline"
+                      className="text-tv-accent hover:text-tv-text hover:underline underline-offset-2"
                     >
                       {signal.symbol}
                     </Link>
@@ -80,7 +96,7 @@ export function SignalTable({ signals, runDate }: Props) {
                 <td className="px-3 py-2.5">
                   <RecommendationBadge recommendation={signal.recommendation} />
                 </td>
-                <td className="px-3 py-2.5 text-right text-slate-700">
+                <td className="px-3 py-2.5 text-right text-tv-text">
                   {formatPrice(signal.price_close_signal_date)}
                 </td>
                 <td className="px-3 py-2.5 text-right">
@@ -97,7 +113,7 @@ export function SignalTable({ signals, runDate }: Props) {
           </tbody>
         </table>
         {filtered.length === 0 && (
-          <div className="text-center py-8 text-slate-400">Không có tín hiệu nào.</div>
+          <div className="text-center py-8 text-tv-muted">Không có tín hiệu nào.</div>
         )}
       </div>
     </div>

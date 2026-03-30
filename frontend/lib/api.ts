@@ -106,3 +106,46 @@ export async function getPnlStats(days = 60): Promise<PnlStat[]> {
 export async function getAccuracyStats(): Promise<AccuracyStat[]> {
   return fetchAPI<AccuracyStat[]>("/api/v1/stats/accuracy");
 }
+
+export interface FeedbackSubmit {
+  message: string;
+  name?: string;
+  contact?: string;
+  page_url: string;
+}
+
+export interface FeedbackItem {
+  id: number;
+  message: string;
+  name: string | null;
+  contact: string | null;
+  page_url: string;
+  created_at: string;
+}
+
+export async function submitFeedback(payload: FeedbackSubmit): Promise<FeedbackItem> {
+  const res = await fetch(`${getApiUrl()}/api/v1/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let detail = `API error ${res.status}`;
+    try {
+      const err = (await res.json()) as {
+        detail?: string | Array<{ msg?: string; loc?: unknown }>;
+      };
+      if (typeof err.detail === "string") {
+        detail = err.detail;
+      } else if (Array.isArray(err.detail)) {
+        detail = err.detail
+          .map((d) => (typeof d.msg === "string" ? d.msg : JSON.stringify(d)))
+          .join("; ");
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  return res.json() as Promise<FeedbackItem>;
+}

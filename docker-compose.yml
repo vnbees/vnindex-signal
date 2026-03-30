@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -33,7 +31,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 
   frontend:
     build:
@@ -44,6 +42,8 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
       API_URL_INTERNAL: http://backend:8000
+      # Raw key matching one row in backend api_keys (see .env.example + README)
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
     depends_on:
       - backend
 

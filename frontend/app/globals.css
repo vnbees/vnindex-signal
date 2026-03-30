@@ -2,12 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 15, 23, 42;
-  --background-rgb: 248, 250, 252;
+:root,
+html[data-theme="dark"] {
+  --tv-bg: 19 23 34;
+  --tv-panel: 30 34 45;
+  --tv-panel-hover: 37 42 56;
+  --tv-border: 42 46 57;
+  --tv-text: 209 212 220;
+  --tv-muted: 120 123 134;
+  --tv-accent: 41 98 255;
+  --tv-up: 8 153 129;
+  --tv-down: 242 54 69;
+  --tv-table-head-bg: 24 28 39;
+  --tv-info-border: rgba(41, 98, 255, 0.35);
+  --tv-info-bg: rgba(41, 98, 255, 0.08);
+}
+
+html[data-theme="light"] {
+  --tv-bg: 248 250 252;
+  --tv-panel: 255 255 255;
+  --tv-panel-hover: 241 245 249;
+  --tv-border: 226 232 240;
+  --tv-text: 15 23 42;
+  --tv-muted: 100 116 139;
+  --tv-accent: 41 98 255;
+  --tv-up: 5 122 85;
+  --tv-down: 220 38 38;
+  --tv-table-head-bg: 241 245 249;
+  --tv-info-border: rgba(41, 98, 255, 0.28);
+  --tv-info-bg: rgba(41, 98, 255, 0.06);
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
+  color: rgb(var(--tv-text));
+  background: rgb(var(--tv-bg));
+}
+
+@layer components {
+  .tv-panel {
+    @apply rounded-lg border border-tv-border bg-tv-panel;
+  }
+  .tv-section-title {
+    @apply text-xs font-semibold uppercase tracking-wide text-tv-muted;
+  }
+  .tv-table-head {
+    @apply text-tv-muted;
+    background-color: rgb(var(--tv-table-head-bg));
+  }
 }

@@ -13,6 +13,25 @@ import {
 } from "recharts";
 import type { PnlStat } from "@/lib/api";
 
+const GRID = "#2a2e39";
+const AXIS = "#787b86";
+const ZERO = "#4b5563";
+
+const BAR_T3 = "#2962ff";
+const BAR_T10 = "#089981";
+const BAR_T20 = "#9b87f5";
+
+const tooltipStyles = {
+  contentStyle: {
+    backgroundColor: "#1e222d",
+    border: `1px solid ${GRID}`,
+    borderRadius: "6px",
+    fontSize: "12px",
+  },
+  labelStyle: { color: AXIS },
+  itemStyle: { color: "#d1d4dc" },
+};
+
 interface Props {
   data: PnlStat[];
 }
@@ -28,15 +47,20 @@ export function PnlStatsChart({ data }: Props) {
   return (
     <ResponsiveContainer width="100%" height={240}>
       <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-        <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-        <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12 }} />
-        <Tooltip formatter={(v: number) => [`${v?.toFixed(2)}%`]} />
-        <Legend />
-        <ReferenceLine y={0} stroke="#94a3b8" />
-        <Bar dataKey="T+3" fill="#60a5fa" />
-        <Bar dataKey="T+10" fill="#34d399" />
-        <Bar dataKey="T+20" fill="#a78bfa" />
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+        <XAxis dataKey="name" tick={{ fontSize: 12, fill: AXIS }} stroke={GRID} />
+        <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12, fill: AXIS }} stroke={GRID} />
+        <Tooltip
+          formatter={(v: number) => [`${v?.toFixed(2)}%`]}
+          contentStyle={tooltipStyles.contentStyle}
+          labelStyle={tooltipStyles.labelStyle}
+          itemStyle={tooltipStyles.itemStyle}
+        />
+        <Legend wrapperStyle={{ paddingTop: 8, color: AXIS }} iconType="square" />
+        <ReferenceLine y={0} stroke={ZERO} />
+        <Bar dataKey="T+3" fill={BAR_T3} radius={[2, 2, 0, 0]} />
+        <Bar dataKey="T+10" fill={BAR_T10} radius={[2, 2, 0, 0]} />
+        <Bar dataKey="T+20" fill={BAR_T20} radius={[2, 2, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

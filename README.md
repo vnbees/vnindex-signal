@@ -67,6 +67,12 @@ docker compose up -d
 # 3. Chờ postgres healthy, chạy migration
 docker compose exec backend alembic upgrade head
 
+# (Tuỳ chọn) Trang /admin/feedback: tạo API key, ghi vào .env ở root repo rồi restart frontend
+# cp .env.example .env
+# docker compose exec backend python scripts/create_api_key.py --label "admin-feedback"
+# echo 'ADMIN_API_KEY=<dán_raw_key_vừa_in>' >> .env
+# docker compose up -d --build frontend
+
 # 4. Seed trading calendar (2015–2027)
 docker compose exec backend python scripts/seed_trading_calendar.py
 
@@ -415,6 +421,15 @@ Server tự động:
 | `GET` | `/api/v1/stats/pnl?days=60` | Thống kê PnL tổng hợp |
 | `GET` | `/api/v1/stats/accuracy` | Win rate theo recommendation |
 | `GET` | `/api/v1/export/csv?from=2026-01-01` | Export CSV toàn bộ tín hiệu |
+
+### Feedback (góp ý người dùng)
+
+| Method | Path | Mô tả |
+|--------|------|-------|
+| `POST` | `/api/v1/feedback` | Gửi góp ý (JSON: `message`, `page_url`, optional `name`, `contact`). Public. |
+| `GET` | `/api/v1/admin/feedback?limit=200&offset=0` | Danh sách góp ý mới nhất (yêu cầu `Authorization: Bearer <API_KEY>`). |
+
+Trang xem trên website: `/admin/feedback` — đặt `ADMIN_API_KEY` trong file `.env` ở **root repo** (Docker Compose truyền vào container frontend; giá trị là raw key in ra một lần từ `scripts/create_api_key.py`). Backend trong Compose tự chạy `alembic upgrade head` khi start nên bảng `feedback` được tạo khi cần.
 
 ### Giá trị hợp lệ
 
