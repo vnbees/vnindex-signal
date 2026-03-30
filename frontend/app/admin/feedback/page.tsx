@@ -9,6 +9,18 @@ export const metadata: Metadata = {
 /** Luôn fetch tại runtime (ADMIN_API_KEY / API URL từ môi trường deploy). */
 export const dynamic = "force-dynamic";
 
+function formatVietnamTime(iso: string): string {
+  return new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  }).format(new Date(iso));
+}
+
 function getBackendUrl(): string {
   return (
     process.env.API_URL_INTERNAL ||
@@ -130,10 +142,7 @@ export default async function AdminFeedbackPage() {
               {items.map((row) => (
                 <tr key={row.id} className="border-b border-tv-border/80 last:border-0">
                   <td className="align-top px-3 py-2 text-tv-muted whitespace-nowrap">
-                    {new Date(row.created_at).toLocaleString("vi-VN", {
-                      dateStyle: "short",
-                      timeStyle: "short",
-                    })}
+                    {formatVietnamTime(row.created_at)}
                   </td>
                   <td className="align-top px-3 py-2">
                     <PageUrlCell url={row.page_url} />
