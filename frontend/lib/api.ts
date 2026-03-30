@@ -124,7 +124,7 @@ export interface FeedbackItem {
 }
 
 export async function submitFeedback(payload: FeedbackSubmit): Promise<FeedbackItem> {
-  const res = await fetch(`${getApiUrl()}/api/v1/feedback`, {
+  const res = await fetch("/api/feedback", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
