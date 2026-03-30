@@ -9,6 +9,20 @@ export const metadata: Metadata = {
 /** Luôn fetch tại runtime (ADMIN_API_KEY / API URL từ môi trường deploy). */
 export const dynamic = "force-dynamic";
 
+/**
+ * Backend thường trả UTC; nếu chuỗi không có Z/offset, ECMAScript coi là *local*
+ * → máy VN sẽ lệch 7h. Luôn gắn Z cho naive ISO để parse đúng UTC.
+ */
+function parseFeedbackInstant(iso: string): Date {
+  const s = iso.trim();
+  if (/Z$/i.test(s)) return new Date(s);
+  if (/[+-]\d{2}:\d{2}$/.test(s)) return new Date(s);
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(s)) {
+    return new Date(`${s}Z`);
+  }
+  return new Date(s);
+}
+
 function formatVietnamTime(iso: string): string {
   return new Intl.DateTimeFormat("vi-VN", {
     timeZone: "Asia/Ho_Chi_Minh",
@@ -18,7 +32,7 @@ function formatVietnamTime(iso: string): string {
     day: "2-digit",
     month: "2-digit",
     year: "2-digit",
-  }).format(new Date(iso));
+  }).format(parseFeedbackInstant(iso));
 }
 
 function getBackendUrl(): string {

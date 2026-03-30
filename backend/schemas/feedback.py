@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 
 class FeedbackCreate(BaseModel):
@@ -36,3 +36,11 @@ class FeedbackOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("created_at")
+    def serialize_created_at_utc_z(self, v: datetime) -> str:
+        """Luôn trả ISO8601 UTC có hậu tố Z để client parse đúng (tránh naive local)."""
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        u = v.astimezone(timezone.utc)
+        return u.isoformat(timespec="milliseconds").replace("+00:00", "Z")
