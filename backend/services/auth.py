@@ -16,6 +16,11 @@ async def verify_api_key(
 
     raw_key = authorization[7:]
 
+    # Allow trusted internal service-to-service auth via shared secret.
+    # Used by frontend SSR admin page on Railway without storing raw API keys.
+    if raw_key == settings.api_secret_key:
+        return 0
+
     # Check all active keys
     result = await db.execute(
         select(ApiKey).where(ApiKey.is_active == True)
