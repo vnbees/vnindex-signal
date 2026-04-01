@@ -271,15 +271,15 @@ async def suggest_allocation(
                 s.recommendation IN ('BUY_STRONG', 'BUY')
                 OR (s.recommendation = 'HOLD' AND COALESCE(ps.avg_pnl_d3, ps.avg_pnl_d10, ps.avg_pnl_d20, -999) >= 1.0)
               )
-            ORDER BY s.score_total DESC
-            LIMIT :max_items
+            ORDER BY s.run_date DESC, s.score_total DESC
+            LIMIT :candidate_limit
             """
         ),
         {
             "run_date": chosen_date,
             "portfolio_kind": portfolio_kind,
             "since_date": chosen_date - timedelta(days=365),
-            "max_items": max(1, min(max_items, 20)),
+            "candidate_limit": max(20, min(max_items * 6, 200)),
         },
     )
     rows = [dict(r._mapping) for r in candidate_result.fetchall()]
@@ -316,7 +316,8 @@ async def suggest_allocation(
         return None
 
     def signal_factor(rec: str) -> float:
-        return {"BUY_STRONG": 1.00, "BUY": 0.97, "HOLD": 0.92}.get(rec, 0.9)
+        # Keep a mild signal preference, but do not override performance-driven ranking.
+        return {"BUY_STRONG": 1.00, "BUY": 0.99, "HOLD": 0.98}.get(rec, 0.97)
 
     scored = []
     for row in rows:
@@ -340,9 +341,13 @@ async def suggest_allocation(
         pnl_score = clamp01(((short_term_pnl or 0.0) + 5.0) / 15.0) * max(confidence, 0.2)
         winrate_score = clamp01((short_term_winrate or 0.0) / 100.0) * max(confidence, 0.2)
         recency_signal_score = clamp01(float(row["score_total"]) / 100.0)
-        base_score = 0.65 * pnl_score + 0.25 * winrate_score + 0.10 * recency_signal_score
+        # PnL-driven scoring: performance dominates; signal score is only a light tie-breaker.
+        base_score = 0.80 * pnl_score + 0.15 * winrate_score + 0.05 * recency_signal_score
         final_score = max(base_score * signal_factor(row["recommendation"]), 0.001)
         scored.append({**row, "final_score": final_score})
+
+    scored.sort(key=lambda x: x["final_score"], reverse=True)
+    scored = scored[: max(1, min(max_items, 20))]
 
     score_sum = sum(item["final_score"] for item in scored)
     remaining = Decimal(capital)
