@@ -13,9 +13,9 @@ router = APIRouter(tags=["stats"])
 @router.get("/api/v1/stats/debug")
 async def stats_debug(db: AsyncSession = Depends(get_db)):
     """Temporary debug endpoint — check DB state."""
-    out = {}
     from datetime import date as _date, timedelta
     since = _date.today() - timedelta(days=60)
+    out = {}
     for query, key, params in [
         ("SELECT COUNT(*) FROM signal_pnl_summary", "count_mv", {}),
         ("SELECT attname FROM pg_attribute WHERE attrelid='signal_pnl_summary'::regclass AND attnum>0 ORDER BY attnum", "mv_columns", {}),
@@ -32,6 +32,19 @@ async def stats_debug(db: AsyncSession = Depends(get_db)):
     return out
 
 
+def _price_filter_clause(price_min: Optional[float], price_max: Optional[float]) -> tuple[str, dict]:
+    """Build price filter WHERE clause and params — only include non-None values."""
+    clauses, params = [], {}
+    if price_min is not None:
+        clauses.append("price_close_signal_date >= :price_min")
+        params["price_min"] = price_min
+    if price_max is not None:
+        clauses.append("price_close_signal_date <= :price_max")
+        params["price_max"] = price_max
+    sql = (" AND " + " AND ".join(clauses)) if clauses else ""
+    return sql, params
+
+
 @router.get("/api/v1/stats/pnl")
 async def get_pnl_stats(
     days: int = 60,
@@ -41,7 +54,9 @@ async def get_pnl_stats(
 ):
     try:
         since_date = date.today() - timedelta(days=days)
-        result = await db.execute(text("""
+        price_sql, price_params = _price_filter_clause(price_min, price_max)
+        params = {"since_date": since_date, **price_params}
+        result = await db.execute(text(f"""
             SELECT
                 recommendation,
                 COUNT(*) AS total,
@@ -52,14 +67,14 @@ async def get_pnl_stats(
             FROM signal_pnl_summary
             WHERE run_date >= :since_date
               AND portfolio_kind = 'top_cap'
-              AND (:price_min IS NULL OR price_close_signal_date >= :price_min)
-              AND (:price_max IS NULL OR price_close_signal_date <= :price_max)
+              {price_sql}
             GROUP BY recommendation
             ORDER BY recommendation
-        """), {"since_date": since_date, "price_min": price_min, "price_max": price_max})
+        """), params)
         rows = result.fetchall()
         return [dict(row._mapping) for row in rows]
     except Exception as e:
+        await db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e), "trace": traceback.format_exc()})
 
 
@@ -70,7 +85,8 @@ async def get_accuracy_stats(
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        result = await db.execute(text("""
+        price_sql, price_params = _price_filter_clause(price_min, price_max)
+        result = await db.execute(text(f"""
             SELECT
                 recommendation,
                 COUNT(*) AS total,
@@ -82,12 +98,12 @@ async def get_accuracy_stats(
                 ROUND(100.0 * SUM(CASE WHEN pnl_d20 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d20), 0), 1) AS winrate_d20
             FROM signal_pnl_summary
             WHERE portfolio_kind = 'top_cap'
-              AND (:price_min IS NULL OR price_close_signal_date >= :price_min)
-              AND (:price_max IS NULL OR price_close_signal_date <= :price_max)
+              {price_sql}
             GROUP BY recommendation
             ORDER BY recommendation
-        """), {"price_min": price_min, "price_max": price_max})
+        """), price_params)
         rows = result.fetchall()
         return [dict(row._mapping) for row in rows]
     except Exception as e:
+        await db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e), "trace": traceback.format_exc()})
