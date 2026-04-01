@@ -84,6 +84,7 @@ export default async function GoiYVaoLenhPage({ searchParams }: Props) {
                 <thead className="border-b border-tv-border tv-table-head">
                   <tr>
                     <th className="px-3 py-2 text-left">Mã</th>
+                    <th className="px-3 py-2 text-left">Ngày tín hiệu</th>
                     <th className="px-3 py-2 text-left">KN</th>
                     <th className="px-3 py-2 text-right">Giá tham chiếu</th>
                     <th className="px-3 py-2 text-right">SL (lô 100)</th>
@@ -95,6 +96,7 @@ export default async function GoiYVaoLenhPage({ searchParams }: Props) {
                   {allocation.suggestions.map((item) => (
                     <tr key={item.symbol} className="border-b border-tv-border/60">
                       <td className="px-3 py-2 font-semibold text-tv-text">{item.symbol}</td>
+                      <td className="px-3 py-2 text-tv-muted">{formatDate(item.signal_date)}</td>
                       <td className="px-3 py-2">
                         <RecommendationBadge recommendation={item.recommendation} />
                       </td>

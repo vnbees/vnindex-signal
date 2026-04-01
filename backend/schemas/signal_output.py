@@ -69,6 +69,7 @@ class SymbolStatSummary(BaseModel):
 
 class AllocationSuggestionItem(BaseModel):
     symbol: str
+    signal_date: date
     recommendation: str
     reference_price: Decimal
     final_score: Decimal

@@ -82,6 +82,7 @@ export interface SymbolSearchResult {
 
 export interface AllocationSuggestionItem {
   symbol: string;
+  signal_date: string;
   recommendation: string;
   reference_price: number;
   final_score: number;

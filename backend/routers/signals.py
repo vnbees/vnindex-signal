@@ -230,6 +230,7 @@ async def suggest_allocation(
             SELECT
                 s.id,
                 s.symbol,
+                s.run_date AS signal_date,
                 s.recommendation,
                 s.price_close_signal_date,
                 s.score_total,
@@ -268,7 +269,7 @@ async def suggest_allocation(
               AND s.price_close_signal_date > 0
               AND (
                 s.recommendation IN ('BUY_STRONG', 'BUY')
-                OR (s.recommendation = 'HOLD' AND COALESCE(ps.avg_pnl_d10, ps.avg_pnl_d20, -999) >= 1.0)
+                OR (s.recommendation = 'HOLD' AND COALESCE(ps.avg_pnl_d3, ps.avg_pnl_d10, ps.avg_pnl_d20, -999) >= 1.0)
               )
             ORDER BY s.score_total DESC
             LIMIT :max_items
@@ -308,17 +309,11 @@ async def suggest_allocation(
         except (TypeError, ValueError):
             return None
 
-    def weighted_avg(values: list[tuple[float | None, float]]) -> float | None:
-        numerator = 0.0
-        denominator = 0.0
-        for v, w in values:
-            if v is None:
-                continue
-            numerator += v * w
-            denominator += w
-        if denominator == 0:
-            return None
-        return numerator / denominator
+    def first_available(values: list[float | None]) -> float | None:
+        for v in values:
+            if v is not None:
+                return v
+        return None
 
     def signal_factor(rec: str) -> float:
         return {"BUY_STRONG": 1.00, "BUY": 0.97, "HOLD": 0.92}.get(rec, 0.9)
@@ -337,13 +332,12 @@ async def suggest_allocation(
         samples_d20 = int(row.get("samples_d20") or 0)
         total_samples = samples_d3 + samples_d10 + samples_d20
 
-        short_term_pnl = weighted_avg([(avg_pnl_d3, 0.45), (avg_pnl_d10, 0.45), (avg_pnl_d20, 0.10)])
-        short_term_winrate = weighted_avg([(winrate_d3, 0.5), (winrate_d10, 0.4), (winrate_d20, 0.1)])
+        short_term_pnl = first_available([avg_pnl_d3, avg_pnl_d10, avg_pnl_d20, avg_latest])
+        short_term_winrate = first_available([winrate_d3, winrate_d10, winrate_d20])
 
         # Confidence grows with real observed samples; no history => strong penalty.
         confidence = clamp01(total_samples / 30.0)
-        pnl_base = short_term_pnl if short_term_pnl is not None else avg_latest
-        pnl_score = clamp01(((pnl_base or 0.0) + 5.0) / 15.0) * max(confidence, 0.2)
+        pnl_score = clamp01(((short_term_pnl or 0.0) + 5.0) / 15.0) * max(confidence, 0.2)
         winrate_score = clamp01((short_term_winrate or 0.0) / 100.0) * max(confidence, 0.2)
         recency_signal_score = clamp01(float(row["score_total"]) / 100.0)
         base_score = 0.65 * pnl_score + 0.25 * winrate_score + 0.10 * recency_signal_score
@@ -425,6 +419,7 @@ async def suggest_allocation(
         suggestions.append(
             AllocationSuggestionItem(
                 symbol=item["symbol"],
+                signal_date=item["signal_date"],
                 recommendation=item["recommendation"],
                 reference_price=price,
                 final_score=Decimal(str(round(item["final_score"], 6))),
@@ -448,6 +443,7 @@ async def suggest_allocation(
         suggestions.append(
             AllocationSuggestionItem(
                 symbol=min_lot_item["symbol"],
+                signal_date=min_lot_item["signal_date"],
                 recommendation=fallback_rec,
                 reference_price=min_lot_price,
                 final_score=Decimal(str(round(min_lot_item["final_score"], 6))),
@@ -510,6 +506,7 @@ async def suggest_allocation(
                 suggestions.append(
                     AllocationSuggestionItem(
                         symbol=picked["symbol"],
+                        signal_date=picked["signal_date"],
                         recommendation=picked["recommendation"],
                         reference_price=picked_price,
                         final_score=Decimal(str(round(picked["final_score"], 6))),
