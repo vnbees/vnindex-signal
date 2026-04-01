@@ -51,7 +51,7 @@ export default async function GoiYVaoLenhPage({ searchParams }: Props) {
         <div className="mb-3">
           <PriceFilter />
           <p className="text-xs text-tv-muted mt-2">
-            Khoảng giá sẽ được dùng để ưu tiên loại tín hiệu có thống kê PnL và winrate tốt nhất.
+            Không chọn khoảng giá: hệ thống sẽ tự chọn bucket giá có winrate tốt hơn. Bạn vẫn có thể chọn tay để override.
           </p>
         </div>
         <h2 className="tv-section-title mb-3">Nhập vốn muốn vào lệnh</h2>
@@ -90,6 +90,15 @@ export default async function GoiYVaoLenhPage({ searchParams }: Props) {
               <span className="text-tv-text font-medium">{formatMoney(allocation.total_planned)}</span> | Tiền dư:{" "}
               <span className="text-tv-text font-medium">{formatMoney(allocation.cash_left)}</span>
             </div>
+            {allocation.selected_price_label && (
+              <p className="text-sm text-tv-muted">
+                Khoảng giá đang áp dụng:{" "}
+                <span className="text-tv-text font-medium">
+                  {allocation.selected_price_label}
+                  {allocation.auto_selected_price_filter ? " (tự động)" : " (bạn chọn)"}
+                </span>
+              </p>
+            )}
             <div className="overflow-x-auto rounded-lg border border-tv-border">
               <table className="min-w-full text-sm">
                 <thead className="border-b border-tv-border tv-table-head">

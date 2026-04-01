@@ -89,5 +89,9 @@ class AllocationSuggestionResponse(BaseModel):
     min_required_capital: Optional[Decimal] = None
     min_required_symbol: Optional[str] = None
     min_required_reference_price: Optional[Decimal] = None
+    selected_price_label: Optional[str] = None
+    selected_price_min: Optional[Decimal] = None
+    selected_price_max: Optional[Decimal] = None
+    auto_selected_price_filter: bool = False
     no_result_message: Optional[str] = None
     suggestions: list[AllocationSuggestionItem]

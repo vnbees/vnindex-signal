@@ -102,6 +102,10 @@ export interface AllocationSuggestionResponse {
   min_required_capital?: number | null;
   min_required_symbol?: string | null;
   min_required_reference_price?: number | null;
+  selected_price_label?: string | null;
+  selected_price_min?: number | null;
+  selected_price_max?: number | null;
+  auto_selected_price_filter?: boolean;
   no_result_message?: string | null;
   suggestions: AllocationSuggestionItem[];
 }

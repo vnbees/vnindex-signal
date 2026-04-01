@@ -228,11 +228,26 @@ async def suggest_allocation(
         if chosen_date is None:
             raise HTTPException(status_code=404, detail="No run data found")
 
-    use_price_bucket = price_min is not None or price_max is not None
-    price_sql, price_params = _price_filter_clause(price_min, price_max)
-    hold_perf_from_bucket: float | None = None
-    bucket_by_rec: dict[str, dict] = {}
-    if use_price_bucket:
+    def val_or_none(v) -> float | None:
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def first_available(values: list[float | None]) -> float | None:
+        for v in values:
+            if v is not None:
+                return v
+        return None
+
+    async def load_recommendation_bucket(
+        current_price_min: Optional[float],
+        current_price_max: Optional[float],
+    ) -> dict[str, dict]:
+        current_price_sql, current_price_params = _price_filter_clause(current_price_min, current_price_max)
+        current_bucket: dict[str, dict] = {}
         bucket_pnl_result = await db.execute(
             text(
                 f"""
@@ -246,21 +261,21 @@ async def suggest_allocation(
                 FROM signal_pnl_summary
                 WHERE run_date >= :since_date
                   AND portfolio_kind = :portfolio_kind
-                  {price_sql}
+                  {current_price_sql}
                 GROUP BY recommendation
                 """
             ),
             {
                 "since_date": chosen_date - timedelta(days=max(days, 1)),
                 "portfolio_kind": portfolio_kind,
-                **price_params,
+                **current_price_params,
             },
         )
         for row in bucket_pnl_result.fetchall():
             row_dict = dict(row._mapping)
             rec = row_dict.get("recommendation")
             if rec:
-                bucket_by_rec[rec] = row_dict
+                current_bucket[rec] = row_dict
 
         bucket_acc_result = await db.execute(
             text(
@@ -273,21 +288,91 @@ async def suggest_allocation(
                     ROUND(100.0 * SUM(CASE WHEN pnl_d20 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d20), 0), 1) AS winrate_d20
                 FROM signal_pnl_summary
                 WHERE portfolio_kind = :portfolio_kind
-                  {price_sql}
+                  {current_price_sql}
                 GROUP BY recommendation
                 """
             ),
-            {"portfolio_kind": portfolio_kind, **price_params},
+            {"portfolio_kind": portfolio_kind, **current_price_params},
         )
         for row in bucket_acc_result.fetchall():
             row_dict = dict(row._mapping)
             rec = row_dict.get("recommendation")
             if not rec:
                 continue
-            current = bucket_by_rec.get(rec, {})
+            current = current_bucket.get(rec, {})
             current.update(row_dict)
-            bucket_by_rec[rec] = current
+            current_bucket[rec] = current
+        return current_bucket
 
+    auto_selected_price_filter = False
+    selected_price_label: Optional[str] = None
+    manual_price_filter = price_min is not None or price_max is not None
+    if not manual_price_filter:
+        auto_ranges = [
+            {"label": "Dưới 10k", "min": None, "max": 10.0},
+            {"label": "10-20k", "min": 10.0, "max": 20.0},
+            {"label": "20-30k", "min": 20.0, "max": 30.0},
+            {"label": "30-50k", "min": 30.0, "max": 50.0},
+            {"label": "50-100k", "min": 50.0, "max": 100.0},
+            {"label": "Trên 100k", "min": 100.0, "max": None},
+        ]
+        best_bucket_score: float | None = None
+        best_range: Optional[dict] = None
+        for candidate_range in auto_ranges:
+            candidate_bucket = await load_recommendation_bucket(candidate_range["min"], candidate_range["max"])
+            total_weight = 0.0
+            weighted_pnl = 0.0
+            weighted_winrate = 0.0
+            for rec_stats in candidate_bucket.values():
+                rec_total = float(rec_stats.get("total") or 0.0)
+                if rec_total <= 0:
+                    continue
+                short_pnl = first_available(
+                    [
+                        val_or_none(rec_stats.get("avg_pnl_d3")),
+                        val_or_none(rec_stats.get("avg_pnl_d10")),
+                        val_or_none(rec_stats.get("avg_pnl_d20")),
+                        val_or_none(rec_stats.get("avg_latest_pnl")),
+                    ]
+                ) or 0.0
+                short_winrate = first_available(
+                    [
+                        val_or_none(rec_stats.get("winrate_d3")),
+                        val_or_none(rec_stats.get("winrate_d10")),
+                        val_or_none(rec_stats.get("winrate_d20")),
+                    ]
+                ) or 0.0
+                weighted_pnl += short_pnl * rec_total
+                weighted_winrate += short_winrate * rec_total
+                total_weight += rec_total
+            if total_weight <= 0:
+                continue
+            avg_pnl = weighted_pnl / total_weight
+            avg_winrate = weighted_winrate / total_weight
+            # Winrate-first bucket selection; PnL remains a secondary tie-breaker.
+            bucket_score = avg_winrate + 0.15 * avg_pnl + min(total_weight, 200.0) / 200.0
+            if best_bucket_score is None or bucket_score > best_bucket_score:
+                best_bucket_score = bucket_score
+                best_range = candidate_range
+        if best_range is not None:
+            price_min = best_range["min"]
+            price_max = best_range["max"]
+            selected_price_label = str(best_range["label"])
+            auto_selected_price_filter = True
+
+    use_price_bucket = price_min is not None or price_max is not None
+    if use_price_bucket and selected_price_label is None:
+        if price_min is not None and price_max is not None:
+            selected_price_label = f"{price_min:g}-{price_max:g}k"
+        elif price_min is not None:
+            selected_price_label = f"Trên {price_min:g}k"
+        elif price_max is not None:
+            selected_price_label = f"Dưới {price_max:g}k"
+
+    bucket_by_rec: dict[str, dict] = {}
+    hold_perf_from_bucket: float | None = None
+    if use_price_bucket:
+        bucket_by_rec = await load_recommendation_bucket(price_min, price_max)
         hold_bucket = bucket_by_rec.get("HOLD")
         if hold_bucket:
             for key in ("avg_pnl_d3", "avg_pnl_d10", "avg_pnl_d20", "avg_latest_pnl"):
@@ -296,9 +381,10 @@ async def suggest_allocation(
                     hold_perf_from_bucket = float(value)
                     break
 
+    candidate_price_sql, candidate_price_params = _price_filter_clause(price_min, price_max)
     candidate_result = await db.execute(
         text(
-            """
+            f"""
             SELECT
                 s.id,
                 s.symbol,
@@ -339,6 +425,7 @@ async def suggest_allocation(
             WHERE s.run_date = :run_date
               AND ar.portfolio_kind = :portfolio_kind
               AND s.price_close_signal_date > 0
+              {candidate_price_sql}
               AND (
                 s.recommendation IN ('BUY_STRONG', 'BUY')
                 OR (s.recommendation = 'HOLD' AND COALESCE(:hold_bucket_perf, ps.avg_pnl_d3, ps.avg_pnl_d10, ps.avg_pnl_d20, -999) >= 1.0)
@@ -353,6 +440,7 @@ async def suggest_allocation(
             "since_date": chosen_date - timedelta(days=365),
             "candidate_limit": max(20, min(max_items * 6, 200)),
             "hold_bucket_perf": hold_perf_from_bucket,
+            **candidate_price_params,
         },
     )
     rows = [dict(r._mapping) for r in candidate_result.fetchall()]
@@ -367,26 +455,16 @@ async def suggest_allocation(
             min_required_capital=None,
             min_required_symbol=None,
             min_required_reference_price=None,
+            selected_price_label=selected_price_label,
+            selected_price_min=Decimal(str(price_min)) if price_min is not None else None,
+            selected_price_max=Decimal(str(price_max)) if price_max is not None else None,
+            auto_selected_price_filter=auto_selected_price_filter,
             no_result_message="Không tìm thấy mã phù hợp theo điều kiện hiện tại.",
             suggestions=[],
         )
 
     def clamp01(v: float) -> float:
         return max(0.0, min(1.0, v))
-
-    def val_or_none(v) -> float | None:
-        if v is None:
-            return None
-        try:
-            return float(v)
-        except (TypeError, ValueError):
-            return None
-
-    def first_available(values: list[float | None]) -> float | None:
-        for v in values:
-            if v is not None:
-                return v
-        return None
 
     def signal_factor(rec: str) -> float:
         # Keep a mild signal preference, but do not override performance-driven ranking.
@@ -425,8 +503,11 @@ async def suggest_allocation(
         pnl_score = clamp01(((short_term_pnl or 0.0) + 5.0) / 15.0) * max(confidence, 0.2)
         winrate_score = clamp01((short_term_winrate or 0.0) / 100.0) * max(confidence, 0.2)
         recency_signal_score = clamp01(float(row["score_total"]) / 100.0)
-        # PnL-driven scoring: performance dominates; signal score is only a light tie-breaker.
-        base_score = 0.80 * pnl_score + 0.15 * winrate_score + 0.05 * recency_signal_score
+        # Winrate-first scoring: prioritize stability over peak historical PnL.
+        base_score = 0.70 * winrate_score + 0.25 * pnl_score + 0.05 * recency_signal_score
+        if short_term_winrate is not None and short_term_winrate < 50.0:
+            # Penalize lower-probability setups even when past PnL spikes exist.
+            base_score *= 0.7
         final_score = max(base_score * signal_factor(row["recommendation"]), 0.001)
         scored.append(
             {
@@ -490,7 +571,10 @@ async def suggest_allocation(
 
         reasons: list[str] = [f"Tín hiệu hiện tại: {rec_label}."]
         if item.get("used_price_bucket_metrics"):
-            reasons.append("Điểm ưu tiên dựa trên thống kê theo loại tín hiệu trong khoảng giá bạn đã chọn.")
+            if auto_selected_price_filter:
+                reasons.append("Điểm ưu tiên dựa trên khoảng giá được hệ thống tự chọn theo xác suất thắng cao hơn.")
+            else:
+                reasons.append("Điểm ưu tiên dựa trên thống kê theo loại tín hiệu trong khoảng giá bạn đã chọn.")
 
         if (avg_pnl_d3 is not None and avg_pnl_d3 > 0) or (avg_pnl_d10 is not None and avg_pnl_d10 > 0):
             reasons.append(
@@ -643,6 +727,10 @@ async def suggest_allocation(
         min_required_capital=min_lot_capital,
         min_required_symbol=min_lot_symbol,
         min_required_reference_price=min_lot_price,
+        selected_price_label=selected_price_label,
+        selected_price_min=Decimal(str(price_min)) if price_min is not None else None,
+        selected_price_max=Decimal(str(price_max)) if price_max is not None else None,
+        auto_selected_price_filter=auto_selected_price_filter,
         no_result_message=no_result_message,
         suggestions=suggestions,
     )
