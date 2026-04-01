@@ -1,6 +1,6 @@
 from datetime import date
 from decimal import Decimal
-from typing import Optional, Any
+from typing import Optional, Any, Literal
 from pydantic import BaseModel, field_validator
 
 class SignalInput(BaseModel):
@@ -30,4 +30,5 @@ class SignalBatchInput(BaseModel):
     run_date: date
     top_n: int = 30
     hold_days: int = 20
+    portfolio_kind: Literal["top_cap", "low_cap"] = "top_cap"
     signals: list[SignalInput]

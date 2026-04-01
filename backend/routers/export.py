@@ -15,11 +15,12 @@ async def export_csv(
     from_date: Optional[date] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    where = ""
+    conditions = ["portfolio_kind = 'top_cap'"]
     params: dict = {}
     if from_date:
-        where = "WHERE run_date >= :from_date"
+        conditions.append("run_date >= :from_date")
         params["from_date"] = from_date
+    where = "WHERE " + " AND ".join(conditions)
 
     result = await db.execute(text(f"""
         SELECT run_date, symbol, recommendation, score_total,

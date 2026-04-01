@@ -36,6 +36,7 @@ class SignalDetail(SignalListItem):
 class RunListItem(BaseModel):
     id: int
     run_date: date
+    portfolio_kind: str = "top_cap"
     top_n: int
     hold_days: int
     signal_count: int = 0

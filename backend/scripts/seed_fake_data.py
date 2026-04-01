@@ -176,14 +176,22 @@ async def seed_fake_data(num_days: int = 30, symbols_per_run: int = 20):
         for run_date in run_dates:
             # Check if run already exists
             existing = await session.execute(
-                select(AnalysisRun).where(AnalysisRun.run_date == run_date)
+                select(AnalysisRun).where(
+                    AnalysisRun.run_date == run_date,
+                    AnalysisRun.portfolio_kind == "top_cap",
+                )
             )
             if existing.scalar_one_or_none():
                 print(f"  {run_date}: already exists, skipping")
                 continue
 
             symbols = random.sample(SYMBOLS, k=symbols_per_run)
-            run = AnalysisRun(run_date=run_date, top_n=symbols_per_run, hold_days=20)
+            run = AnalysisRun(
+                run_date=run_date,
+                portfolio_kind="top_cap",
+                top_n=symbols_per_run,
+                hold_days=20,
+            )
             session.add(run)
             await session.flush()  # get run.id
 

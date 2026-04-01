@@ -11,6 +11,8 @@ import { formatPrice } from "@/lib/utils";
 interface Props {
   signals: Signal[];
   runDate: string;
+  /** Base path for detail links, e.g. /signals or /danh-muc-von-it */
+  detailBasePath?: string;
 }
 
 const FILTERS = [
@@ -22,7 +24,7 @@ const FILTERS = [
   { label: "Bán", value: "SELL" },
 ];
 
-export function SignalTable({ signals, runDate }: Props) {
+export function SignalTable({ signals, runDate, detailBasePath = "/signals" }: Props) {
   const [filter, setFilter] = useState("");
 
   const filtered = filter ? signals.filter((s) => s.recommendation === filter) : signals;
@@ -86,7 +88,7 @@ export function SignalTable({ signals, runDate }: Props) {
                   <div className="flex items-center gap-1">
                     <CorporateActionWarning show={signal.has_corporate_action} symbol={signal.symbol} />
                     <Link
-                      href={`/signals/${runDate}/${signal.symbol}`}
+                      href={`${detailBasePath}/${runDate}/${signal.symbol}`}
                       className="text-tv-accent hover:text-tv-text hover:underline underline-offset-2"
                     >
                       {signal.symbol}

@@ -19,11 +19,12 @@ async def upsert_signals(db: AsyncSession, payload: SignalBatchInput, api_key_id
     # Upsert analysis_run
     run_stmt = pg_insert(AnalysisRun).values(
         run_date=run_date,
+        portfolio_kind=payload.portfolio_kind,
         top_n=payload.top_n,
-        hold_days=payload.hold_days
+        hold_days=payload.hold_days,
     ).on_conflict_do_update(
-        index_elements=['run_date'],
-        set_={"top_n": payload.top_n, "hold_days": payload.hold_days}
+        constraint="uq_analysis_runs_run_date_portfolio_kind",
+        set_={"top_n": payload.top_n, "hold_days": payload.hold_days},
     ).returning(AnalysisRun.id)
     run_result = await db.execute(run_stmt)
     run_id = run_result.scalar_one()
@@ -45,8 +46,8 @@ async def upsert_signals(db: AsyncSession, payload: SignalBatchInput, api_key_id
             # Check if record already exists before upsert to track insert vs update
             existing_result = await db.execute(
                 select(Signal.id).where(
-                    Signal.run_date == run_date,
-                    Signal.symbol == sig.symbol
+                    Signal.run_id == run_id,
+                    Signal.symbol == sig.symbol,
                 )
             )
             is_new = existing_result.scalar_one_or_none() is None
@@ -70,7 +71,7 @@ async def upsert_signals(db: AsyncSession, payload: SignalBatchInput, api_key_id
                 detail_cashflow=sig.detail_cashflow,
                 detail_seasonal=sig.detail_seasonal,
             ).on_conflict_do_update(
-                constraint='uq_signals_run_date_symbol',
+                constraint="uq_signals_run_id_symbol",
                 set_={
                     "score_financial": sig.score_financial,
                     "score_seasonal": sig.score_seasonal,
@@ -101,7 +102,12 @@ async def upsert_signals(db: AsyncSession, payload: SignalBatchInput, api_key_id
             action="signals.write",
             run_date=run_date,
             api_key_id=api_key_id,
-            details={"inserted": inserted, "updated": updated, "errors_count": len(errors)}
+            details={
+                "inserted": inserted,
+                "updated": updated,
+                "errors_count": len(errors),
+                "portfolio_kind": payload.portfolio_kind,
+            },
         )
     )
     await db.commit()

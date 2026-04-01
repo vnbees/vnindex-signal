@@ -21,7 +21,7 @@ async def get_pnl_stats(
             ROUND(AVG(pnl_d20), 2) AS avg_pnl_d20,
             ROUND(AVG(latest_pnl_pct), 2) AS avg_latest_pnl
         FROM signal_pnl_summary
-        WHERE run_date >= :since_date
+        WHERE run_date >= :since_date AND portfolio_kind = 'top_cap'
         GROUP BY recommendation
         ORDER BY recommendation
     """), {"since_date": since_date})
@@ -43,6 +43,7 @@ async def get_accuracy_stats(
             ROUND(100.0 * SUM(CASE WHEN pnl_d10 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d10), 0), 1) AS winrate_d10,
             ROUND(100.0 * SUM(CASE WHEN pnl_d20 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d20), 0), 1) AS winrate_d20
         FROM signal_pnl_summary
+        WHERE portfolio_kind = 'top_cap'
         GROUP BY recommendation
         ORDER BY recommendation
     """))

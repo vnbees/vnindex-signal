@@ -18,6 +18,10 @@ node_modules/
 .next/
 out/
 .env.local
+*.tsbuildinfo
+
+# Backtest CSV outputs (optional local artifacts)
+backend/scripts/backtest_*.csv
 
 # Environment
 .env
@@ -36,7 +40,11 @@ out/
 .playwright-mcp/
 .gstack/
 
+# Local PostgreSQL bundle (Windows portable)
+.pg/
+
 # OS
 .DS_Store
 Thumbs.db
 main-prompt.txt
+main-prompt.local.txt

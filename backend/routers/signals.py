@@ -24,10 +24,15 @@ async def write_signals(
 async def list_runs(
     limit: int = 30,
     offset: int = 0,
+    portfolio_kind: str = "top_cap",
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(
-        select(AnalysisRun).order_by(AnalysisRun.run_date.desc()).limit(limit).offset(offset)
+        select(AnalysisRun)
+        .where(AnalysisRun.portfolio_kind == portfolio_kind)
+        .order_by(AnalysisRun.run_date.desc())
+        .limit(limit)
+        .offset(offset)
     )
     runs = result.scalars().all()
     items = []
@@ -39,6 +44,7 @@ async def list_runs(
         items.append(RunListItem(
             id=run.id,
             run_date=run.run_date,
+            portfolio_kind=run.portfolio_kind,
             top_n=run.top_n,
             hold_days=run.hold_days,
             signal_count=count
@@ -51,6 +57,7 @@ async def get_signals_for_date(
     recommendation: Optional[str] = None,
     sort_by: str = "score_total",
     order: str = "desc",
+    portfolio_kind: str = "top_cap",
     db: AsyncSession = Depends(get_db)
 ):
     allowed_sort_columns = {
@@ -64,6 +71,7 @@ async def get_signals_for_date(
     result = await db.execute(
         select(Signal).join(AnalysisRun).where(
             Signal.run_date == run_date,
+            AnalysisRun.portfolio_kind == portfolio_kind,
             *([Signal.recommendation == recommendation] if recommendation else [])
         ).order_by(
             sort_col.desc() if sort_dir == "DESC" else sort_col.asc()
@@ -73,8 +81,11 @@ async def get_signals_for_date(
 
     # Get PnL data from materialized view
     pnl_result = await db.execute(
-        text("SELECT signal_id, pnl_d3, pnl_d10, pnl_d20, latest_pnl_pct FROM signal_pnl_summary WHERE run_date = :run_date"),
-        {"run_date": run_date}
+        text(
+            "SELECT signal_id, pnl_d3, pnl_d10, pnl_d20, latest_pnl_pct "
+            "FROM signal_pnl_summary WHERE run_date = :run_date AND portfolio_kind = :portfolio_kind"
+        ),
+        {"run_date": run_date, "portfolio_kind": portfolio_kind},
     )
     pnl_map = {row.signal_id: row for row in pnl_result.fetchall()}
 
@@ -108,12 +119,14 @@ async def get_signals_for_date(
 async def get_signal_detail(
     run_date: date,
     symbol: str,
+    portfolio_kind: str = "top_cap",
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(
-        select(Signal).where(
+        select(Signal).join(AnalysisRun).where(
             Signal.run_date == run_date,
-            Signal.symbol == symbol.upper()
+            Signal.symbol == symbol.upper(),
+            AnalysisRun.portfolio_kind == portfolio_kind,
         )
     )
     signal = result.scalar_one_or_none()
@@ -121,8 +134,11 @@ async def get_signal_detail(
         raise HTTPException(status_code=404, detail="Signal not found")
 
     pnl_result = await db.execute(
-        text("SELECT pnl_d3, pnl_d10, pnl_d20, latest_pnl_pct FROM signal_pnl_summary WHERE run_date = :run_date AND symbol = :symbol"),
-        {"run_date": run_date, "symbol": symbol.upper()}
+        text(
+            "SELECT pnl_d3, pnl_d10, pnl_d20, latest_pnl_pct FROM signal_pnl_summary "
+            "WHERE signal_id = :signal_id"
+        ),
+        {"signal_id": signal.id},
     )
     pnl = pnl_result.fetchone()
 

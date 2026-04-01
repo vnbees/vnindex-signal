@@ -35,6 +35,7 @@ export interface Signal {
 export interface Run {
   id: number;
   run_date: string;
+  portfolio_kind?: string;
   top_n: number;
   hold_days: number;
   signal_count: number;
@@ -80,23 +81,31 @@ export async function getLatestRunDate(): Promise<string | null> {
   }
 }
 
-export async function getRuns(limit = 30): Promise<Run[]> {
-  return fetchAPI<Run[]>(`/api/v1/runs?limit=${limit}`);
+export async function getRuns(limit = 30, portfolioKind = "top_cap"): Promise<Run[]> {
+  const pk = encodeURIComponent(portfolioKind);
+  return fetchAPI<Run[]>(`/api/v1/runs?limit=${limit}&portfolio_kind=${pk}`);
 }
 
 export async function getSignals(
   runDate: string,
   recommendation?: string,
   sortBy = "score_total",
-  order = "desc"
+  order = "desc",
+  portfolioKind = "top_cap"
 ): Promise<Signal[]> {
-  let path = `/api/v1/signals/${runDate}?sort_by=${sortBy}&order=${order}`;
+  const pk = encodeURIComponent(portfolioKind);
+  let path = `/api/v1/signals/${runDate}?sort_by=${sortBy}&order=${order}&portfolio_kind=${pk}`;
   if (recommendation) path += `&recommendation=${recommendation}`;
   return fetchAPI<Signal[]>(path);
 }
 
-export async function getSignalDetail(runDate: string, symbol: string): Promise<Signal> {
-  return fetchAPI<Signal>(`/api/v1/signals/${runDate}/${symbol}`);
+export async function getSignalDetail(
+  runDate: string,
+  symbol: string,
+  portfolioKind = "top_cap"
+): Promise<Signal> {
+  const pk = encodeURIComponent(portfolioKind);
+  return fetchAPI<Signal>(`/api/v1/signals/${runDate}/${symbol}?portfolio_kind=${pk}`);
 }
 
 export async function getPnlStats(days = 60): Promise<PnlStat[]> {

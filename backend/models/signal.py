@@ -1,12 +1,16 @@
-from sqlalchemy import Column, Integer, String, Date, Boolean, Numeric, Text, DateTime, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Date, Boolean, Numeric, Text, DateTime, ForeignKey, func, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from database import Base
 
 class AnalysisRun(Base):
     __tablename__ = "analysis_runs"
+    __table_args__ = (
+        UniqueConstraint("run_date", "portfolio_kind", name="uq_analysis_runs_run_date_portfolio_kind"),
+    )
     id = Column(Integer, primary_key=True)
-    run_date = Column(Date, nullable=False, unique=True)
+    run_date = Column(Date, nullable=False)
+    portfolio_kind = Column(String(20), nullable=False, server_default="top_cap")
     top_n = Column(Integer, nullable=False, default=30)
     hold_days = Column(Integer, nullable=False, default=20)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -15,8 +19,11 @@ class AnalysisRun(Base):
 
 class Signal(Base):
     __tablename__ = "signals"
+    __table_args__ = (
+        UniqueConstraint("run_id", "symbol", name="uq_signals_run_id_symbol"),
+    )
     id = Column(Integer, primary_key=True)
-    run_id = Column(Integer, ForeignKey("analysis_runs.id", ondelete="CASCADE"))
+    run_id = Column(Integer, ForeignKey("analysis_runs.id", ondelete="CASCADE"), nullable=False)
     run_date = Column(Date, nullable=False)
     symbol = Column(String(10), nullable=False)
     status = Column(String(20), nullable=False, default="active")

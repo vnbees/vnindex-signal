@@ -9,15 +9,16 @@ import httpx
 import statistics
 import math
 import json
+import os
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 # ─── THÔNG SỐ ────────────────────────────────────────────────────────────────
-TODAY = date(2026, 3, 30)   # Thứ Hai
+TODAY = date(2026, 4, 1)    # Thứ Tư
 TOP_N = 30
 HOLD_DAYS = 20
 
-FIREANT_TOKEN = (
+_DEFAULT_FIREANT = (
     "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IkdYdExONzViZlZQakdvNERWdjV4"
     "QkRITHpnSSIsImtpZCI6IkdYdExONzViZlZQakdvNERWdjV4QkRITHpnSSJ9.eyJpc3MiOiJo"
     "dHRwczovL2FjY291bnRzLmZpcmVhbnQudm4iLCJhdWQiOiJodHRwczovL2FjY291bnRzLmZp"
@@ -35,9 +36,10 @@ FIREANT_TOKEN = (
     "ROzoQXg25lFub1IYkTrM66gJ6t9fJRZToewCt495WNEOQFa_rwLCZ1QwzvL0iYkONHS_jZ0BO"
     "hBCdW9dWSawD6iF1SIQaFROvMDH1rg"
 )
+FIREANT_TOKEN = os.environ.get("FIREANT_TOKEN", _DEFAULT_FIREANT).strip() or _DEFAULT_FIREANT
 
-WEBSITE_URL = "https://vnindex-signal-production.up.railway.app"
-API_KEY = "sk-vnindex-c87e097efb4dac431dabb8a52e3e5af57e73a74a"
+WEBSITE_URL = (os.environ.get("WEBSITE_URL") or "https://vnindex-signal-production.up.railway.app").rstrip("/")
+API_KEY = os.environ.get("API_KEY") or "sk-vnindex-177b8d2357db9ea1c89c55a4e0da9e555ffb1049"
 
 FIREANT_BASE = "https://restv2.fireant.vn"
 FA_HEADERS = {"Authorization": f"Bearer {FIREANT_TOKEN}", "Content-Type": "application/json"}
@@ -654,7 +656,7 @@ async def update_price_tracking(price_data: Dict[str, List]) -> None:
 async def main():
     print("=" * 80)
     print(f"🚀 PHÂN TÍCH TÍN HIỆU CỔ PHIẾU TỰ ĐỘNG — TOP {TOP_N} VỐN HOÁ HOSE")
-    print(f"   Ngày: {TODAY.strftime('%Y-%m-%d')} (Thứ Hai)")
+    print(f"   Ngày: {TODAY.strftime('%Y-%m-%d')} (Thứ Ba)")
     print("=" * 80)
 
     # Bước 1: Top N stocks
