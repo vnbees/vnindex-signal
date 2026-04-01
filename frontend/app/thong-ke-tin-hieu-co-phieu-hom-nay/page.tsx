@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { getPnlStats, getAccuracyStats, type PnlStat, type AccuracyStat } from "@/lib/api";
 import { PnlStatsChart } from "@/components/PnlStatsChart";
+import { PriceFilter } from "@/components/PriceFilter";
 
 export const dynamic = "force-dynamic";
 
@@ -15,27 +17,54 @@ function pnlCellClass(v: number | null | undefined) {
   return v >= 0 ? "text-tv-up" : "text-tv-down";
 }
 
-export default async function ThongKeTinHieuPage() {
+interface Props {
+  searchParams: { price_min?: string; price_max?: string };
+}
+
+export default async function ThongKeTinHieuPage({ searchParams }: Props) {
+  const priceMin = searchParams.price_min ? Number(searchParams.price_min) : undefined;
+  const priceMax = searchParams.price_max ? Number(searchParams.price_max) : undefined;
+
   let pnlStats: PnlStat[] = [];
   let accuracyStats: AccuracyStat[] = [];
 
   try {
     [pnlStats, accuracyStats] = await Promise.all([
-      getPnlStats(60),
-      getAccuracyStats(),
+      getPnlStats(60, priceMin, priceMax),
+      getAccuracyStats(priceMin, priceMax),
     ]);
   } catch {
     // Continue with empty data
   }
 
+  const filterLabel =
+    priceMin !== undefined && priceMax !== undefined
+      ? `${priceMin}k–${priceMax}k`
+      : priceMin !== undefined
+        ? `Trên ${priceMin}k`
+        : priceMax !== undefined
+          ? `Dưới ${priceMax}k`
+          : null;
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <h1 className="text-xl font-semibold text-tv-text tracking-tight">Thống kê hiệu suất</h1>
       </div>
 
+      <div className="tv-panel p-4 mb-4">
+        <Suspense fallback={null}>
+          <PriceFilter />
+        </Suspense>
+      </div>
+
       <div className="tv-panel p-6 mb-6">
-        <h2 className="tv-section-title mb-4">PnL trung bình theo khuyến nghị (60 ngày)</h2>
+        <h2 className="tv-section-title mb-1">PnL trung bình theo khuyến nghị (60 ngày)</h2>
+        {filterLabel && (
+          <p className="text-xs text-tv-muted mb-4">
+            Lọc giá: <span className="text-tv-accent font-medium">{filterLabel}</span>
+          </p>
+        )}
         {pnlStats.length > 0 ? (
           <>
             <PnlStatsChart data={pnlStats} />
@@ -76,7 +105,12 @@ export default async function ThongKeTinHieuPage() {
       </div>
 
       <div className="tv-panel p-6">
-        <h2 className="tv-section-title mb-4">Win Rate (PnL &gt; 0)</h2>
+        <h2 className="tv-section-title mb-1">Win Rate (PnL &gt; 0)</h2>
+        {filterLabel && (
+          <p className="text-xs text-tv-muted mb-4">
+            Lọc giá: <span className="text-tv-accent font-medium">{filterLabel}</span>
+          </p>
+        )}
         {accuracyStats.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">

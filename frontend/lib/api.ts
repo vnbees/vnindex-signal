@@ -108,12 +108,27 @@ export async function getSignalDetail(
   return fetchAPI<Signal>(`/api/v1/signals/${runDate}/${symbol}?portfolio_kind=${pk}`);
 }
 
-export async function getPnlStats(days = 60): Promise<PnlStat[]> {
-  return fetchAPI<PnlStat[]>(`/api/v1/stats/pnl?days=${days}`);
+export async function getPnlStats(
+  days = 60,
+  priceMin?: number,
+  priceMax?: number
+): Promise<PnlStat[]> {
+  let path = `/api/v1/stats/pnl?days=${days}`;
+  if (priceMin !== undefined) path += `&price_min=${priceMin}`;
+  if (priceMax !== undefined) path += `&price_max=${priceMax}`;
+  return fetchAPI<PnlStat[]>(path);
 }
 
-export async function getAccuracyStats(): Promise<AccuracyStat[]> {
-  return fetchAPI<AccuracyStat[]>("/api/v1/stats/accuracy");
+export async function getAccuracyStats(
+  priceMin?: number,
+  priceMax?: number
+): Promise<AccuracyStat[]> {
+  let path = "/api/v1/stats/accuracy";
+  const params: string[] = [];
+  if (priceMin !== undefined) params.push(`price_min=${priceMin}`);
+  if (priceMax !== undefined) params.push(`price_max=${priceMax}`);
+  if (params.length > 0) path += `?${params.join("&")}`;
+  return fetchAPI<AccuracyStat[]>(path);
 }
 
 export interface FeedbackSubmit {

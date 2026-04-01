@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Phân tích tín hiệu mua bán TOP 30 cổ phiếu vốn hoá lớn nhất HOSE
-Ngày: 2026-03-30 (Thứ Hai)
+Phân tích tín hiệu mua bán 133 mã HOSE thanh khoản tốt
+Ngày: 2026-04-01 (Thứ Tư)
 """
 
 import asyncio
@@ -15,7 +15,6 @@ from typing import Dict, List, Optional, Tuple
 
 # ─── THÔNG SỐ ────────────────────────────────────────────────────────────────
 TODAY = date(2026, 4, 1)    # Thứ Tư
-TOP_N = 30
 HOLD_DAYS = 20
 
 _DEFAULT_FIREANT = (
@@ -39,24 +38,27 @@ _DEFAULT_FIREANT = (
 FIREANT_TOKEN = os.environ.get("FIREANT_TOKEN", _DEFAULT_FIREANT).strip() or _DEFAULT_FIREANT
 
 WEBSITE_URL = (os.environ.get("WEBSITE_URL") or "https://vnindex-signal-production.up.railway.app").rstrip("/")
-API_KEY = os.environ.get("API_KEY") or "sk-vnindex-177b8d2357db9ea1c89c55a4e0da9e555ffb1049"
+API_KEY = os.environ.get("API_KEY") or "sk-vnindex-c87e097efb4dac431dabb8a52e3e5af57e73a74a"
 
 FIREANT_BASE = "https://restv2.fireant.vn"
 FA_HEADERS = {"Authorization": f"Bearer {FIREANT_TOKEN}", "Content-Type": "application/json"}
 
+# 133 mã HOSE có khối lượng giao dịch TB 60 phiên >= 500,000 CP/phiên — cập nhật 2026-04-01
 CANDIDATES = [
-    "VCB","BID","CTG","TCB","MBB","VIC","VHM","VRE","HPG","NVL","MSN","MWG",
-    "FPT","VNM","GAS","PLX","POW","VJC","HVN",
-    "ACB","STB","VPB","HDB","LPB","SSB","SHB","OCB","TPB","EIB","MSB",
-    "SSI","VND","HCM","MBS","VCI","BSI","AGR",
-    "REE","PNJ","DGC","DPM","DCM","PHR","VHC","CSV","BSR",
-    "SAB","BHN","MCH","QNS","VEA","PAN","BAF","HNG","HAG",
-    "BCM","KDH","NLG","DXG","PDR","DIG","CEO","SCR","VPI","KBC","IDC","SZC","SIP",
-    "PVS","PVD","PVT","OIL","GEE",
-    "GMD","VSC","HAH","DVP","STG","VTO",
-    "VGC","LHG","HII",
-    "NT2","PGV","HND","EVG",
-    "EVF","CTD","GEG",
+    "SHB","HPG","VIX","SSI","MBB","HDB","BSR","VPB","POW","EIB",
+    "SHS","TCB","ACB","DXG","CII","CTG","STB","VND","HCM","TPB",
+    "FPT","MSB","CEO","VCI","VCB","DIG","NVL","PDR","PVS","GEX",
+    "BID","PVD","VCG","DPM","VSC","EVF","PVT","MWG","VNM","PLX",
+    "VIB","OIL","VRE","TCH","HNG","MSN","VHM","HAG","VIC","SSB",
+    "KDH","KBC","DGC","DCM","MBS","OCB","NKG","HHV","IDC","HQC",
+    "HSG","GAS","NLG","HDC","DGW","LPB","MSR","SCR","ORS","ABB",
+    "HDG","GMD","HAH","BAF","LCG","VPI","BVB","VDS","PNJ","DDV",
+    "VAB","HVN","NAB","VJC","NT2","ANV","SAB","VHC","VGI","YEG",
+    "VGC","GEG","LDG","PAN","KSB","HBC","BCM","ELC","FTS","SZC",
+    "DSC","BVH","CSV","TVN","AGR","REE","VEA","PLC","FCN","CTS",
+    "GEE","DRH","PHR","CTD","POM","FRT","NRC","EVG","APG","SIP",
+    "C4G","IDI","VGS","SAM","SGB","MCH","SMC","BSI","KLB","PPC",
+    "BMI","APS","PVB",
 ]
 
 # ─── UTILITIES ────────────────────────────────────────────────────────────────
@@ -97,10 +99,10 @@ def parse_date(s: str) -> Optional[date]:
     except:
         return None
 
-# ─── BƯỚC 1: TOP N THEO VỐN HOÁ ──────────────────────────────────────────────
+# ─── BƯỚC 1: LẤY VỐN HOÁ CHO TẤT CẢ CANDIDATES ─────────────────────────────
 
-async def get_top_stocks(client: httpx.AsyncClient) -> List[Dict]:
-    print(f"\n🔍 Bước 1: Lấy top {TOP_N} mã theo vốn hoá...")
+async def get_all_stocks(client: httpx.AsyncClient) -> List[Dict]:
+    print(f"\n🔍 Bước 1: Lấy vốn hoá {len(CANDIDATES)} mã HOSE thanh khoản tốt...")
 
     async def fetch_fundamental(sym: str) -> Optional[Dict]:
         try:
@@ -108,19 +110,15 @@ async def get_top_stocks(client: httpx.AsyncClient) -> List[Dict]:
             if r.status_code == 200:
                 d = r.json()
                 mc = d.get("marketCap", 0)
-                if mc and mc > 0:
-                    return {"sym": sym, "marketCap": mc, "pe": d.get("pe"), "eps": d.get("eps")}
-        except Exception as e:
+                return {"sym": sym, "marketCap": mc or 0, "pe": d.get("pe"), "eps": d.get("eps")}
+        except Exception:
             pass
-        return None
+        return {"sym": sym, "marketCap": 0, "pe": None, "eps": None}
 
     results = await asyncio.gather(*[fetch_fundamental(s) for s in CANDIDATES])
     valid = [r for r in results if r]
-    valid.sort(key=lambda x: x["marketCap"], reverse=True)
-    top = valid[:TOP_N]
-    syms = [x["sym"] for x in top]
-    print(f"✅ Top {TOP_N}: {', '.join(syms)}")
-    return top
+    print(f"✅ Lấy được vốn hoá {len(valid)}/{len(CANDIDATES)} mã")
+    return valid
 
 # ─── BƯỚC 2: THU THẬP DỮ LIỆU ────────────────────────────────────────────────
 
@@ -490,7 +488,7 @@ def rec_icon(r: str) -> str:
 
 def display_results(signals: List[Dict]):
     print(f"\n{'='*105}")
-    print(f"📊 Phân tích TOP {TOP_N} mã theo vốn hoá lớn nhất HOSE | {TODAY.strftime('%Y-%m-%d')}")
+    print(f"📊 Phân tích {len(signals)} mã HOSE thanh khoản tốt | {TODAY.strftime('%Y-%m-%d')}")
     print(f"TC=Tài chính | SS=Seasonality | KT=Kỹ thuật | DT=Dòng tiền")
     print(f"{'='*105}")
     header = f"{'Vốn hoá(tỷ)':>14} | {'Mã':^5} | {'TC':^4} | {'SS':^4} | {'KT':^4} | {'DT':^4} | {'TỔNG':^5} | Khuyến nghị"
@@ -535,7 +533,7 @@ def display_results(signals: List[Dict]):
             print(f"    📅 Seasonality (điểm SS={s['score_seasonal']:+d}): {ds.get('reason','')}")
 
     print(f"\n{'─'*80}")
-    print(f"📊 Phân tích {TOP_N} mã theo vốn hoá lớn nhất HOSE | {TODAY.strftime('%Y-%m-%d')}")
+    print(f"📊 Phân tích {len(signals)} mã HOSE thanh khoản tốt | {TODAY.strftime('%Y-%m-%d')}")
     print(f"Backtest: 989 obs tài chính (2015-2025) + 18,563 obs kỹ thuật/seasonality (2022-2026)")
     print(f"⚠️  Không phải khuyến nghị đầu tư. Kết hợp với phân tích riêng và quản lý rủi ro.")
 
@@ -545,7 +543,7 @@ async def post_signals(signals: List[Dict]) -> bool:
     print(f"\n📤 Bước 6A: POST {len(signals)} signals lên {WEBSITE_URL}...")
     payload = {
         "run_date": TODAY.isoformat(),
-        "top_n": TOP_N,
+        "top_n": len(signals),
         "hold_days": HOLD_DAYS,
         "signals": signals
     }
@@ -655,13 +653,13 @@ async def update_price_tracking(price_data: Dict[str, List]) -> None:
 
 async def main():
     print("=" * 80)
-    print(f"🚀 PHÂN TÍCH TÍN HIỆU CỔ PHIẾU TỰ ĐỘNG — TOP {TOP_N} VỐN HOÁ HOSE")
-    print(f"   Ngày: {TODAY.strftime('%Y-%m-%d')} (Thứ Ba)")
+    print(f"🚀 PHÂN TÍCH TÍN HIỆU CỔ PHIẾU TỰ ĐỘNG — {len(CANDIDATES)} MÃ HOSE THANH KHOẢN TỐT")
+    print(f"   Ngày: {TODAY.strftime('%Y-%m-%d')} (Thứ Tư) | Backend: {WEBSITE_URL}")
     print("=" * 80)
 
-    # Bước 1: Top N stocks
+    # Bước 1: Lấy vốn hoá tất cả mã
     async with httpx.AsyncClient() as client:
-        top_stocks = await get_top_stocks(client)
+        top_stocks = await get_all_stocks(client)
 
     syms = [x["sym"] for x in top_stocks]
     mc_map = {x["sym"]: x["marketCap"] for x in top_stocks}
@@ -674,7 +672,7 @@ async def main():
     print(f"\n📅 Seasonality: {detail_ss['reason']} → điểm {score_ss:+d}")
 
     # Bước 3-4: Tính signals
-    print(f"\n🧮 Bước 3-4: Tính toán tín hiệu...")
+    print(f"\n🧮 Bước 3-4: Tính toán tín hiệu cho {len(top_stocks)} mã...")
     signals = []
     for stock in top_stocks:
         sym = stock["sym"]

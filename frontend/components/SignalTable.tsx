@@ -15,7 +15,7 @@ interface Props {
   detailBasePath?: string;
 }
 
-const FILTERS = [
+const REC_FILTERS = [
   { label: "Tất cả", value: "" },
   { label: "Mua mạnh", value: "BUY_STRONG" },
   { label: "Mua", value: "BUY" },
@@ -24,28 +24,81 @@ const FILTERS = [
   { label: "Bán", value: "SELL" },
 ];
 
-export function SignalTable({ signals, runDate, detailBasePath = "/signals" }: Props) {
-  const [filter, setFilter] = useState("");
+interface PriceRange {
+  label: string;
+  min?: number;
+  max?: number;
+}
 
-  const filtered = filter ? signals.filter((s) => s.recommendation === filter) : signals;
+const PRICE_RANGES: PriceRange[] = [
+  { label: "Tất cả" },
+  { label: "< 10k", max: 10 },
+  { label: "10–20k", min: 10, max: 20 },
+  { label: "20–30k", min: 20, max: 30 },
+  { label: "30–50k", min: 30, max: 50 },
+  { label: "50–100k", min: 50, max: 100 },
+  { label: "> 100k", min: 100 },
+];
+
+function matchesPriceRange(price: number | null | undefined, range: PriceRange): boolean {
+  if (!range.min && !range.max) return true;
+  const p = Number(price ?? 0);
+  if (range.min !== undefined && p < range.min) return false;
+  if (range.max !== undefined && p > range.max) return false;
+  return true;
+}
+
+export function SignalTable({ signals, runDate, detailBasePath = "/signals" }: Props) {
+  const [recFilter, setRecFilter] = useState("");
+  const [priceRange, setPriceRange] = useState<PriceRange>(PRICE_RANGES[0]);
+
+  const filtered = signals.filter((s) => {
+    if (recFilter && s.recommendation !== recFilter) return false;
+    if (!matchesPriceRange(s.price_close_signal_date, priceRange)) return false;
+    return true;
+  });
 
   return (
     <div>
-      <div className="inline-flex flex-wrap gap-0 p-1 mb-4 rounded-lg bg-tv-panel border border-tv-border">
-        {FILTERS.map((f) => (
-          <button
-            key={f.value}
-            type="button"
-            onClick={() => setFilter(f.value)}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              filter === f.value
-                ? "bg-tv-accent text-white shadow-sm"
-                : "text-tv-muted hover:text-tv-text hover:bg-tv-panel-hover/80"
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="flex flex-col gap-2 mb-4">
+        <div className="inline-flex flex-wrap gap-0 p-1 rounded-lg bg-tv-panel border border-tv-border">
+          {REC_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => setRecFilter(f.value)}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                recFilter === f.value
+                  ? "bg-tv-accent text-white shadow-sm"
+                  : "text-tv-muted hover:text-tv-text hover:bg-tv-panel-hover/80"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-tv-muted font-medium shrink-0">Khoảng giá:</span>
+          <div className="inline-flex flex-wrap gap-0 p-1 rounded-lg bg-tv-panel border border-tv-border">
+            {PRICE_RANGES.map((r) => {
+              const active = r.label === priceRange.label;
+              return (
+                <button
+                  key={r.label}
+                  type="button"
+                  onClick={() => setPriceRange(r)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    active
+                      ? "bg-tv-accent text-white shadow-sm"
+                      : "text-tv-muted hover:text-tv-text hover:bg-tv-panel-hover/80"
+                  }`}
+                >
+                  {r.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-tv-border bg-tv-panel">
