@@ -16,8 +16,8 @@ async def stats_debug(db: AsyncSession = Depends(get_db)):
     out = {}
     for query, key in [
         ("SELECT COUNT(*) FROM signal_pnl_summary", "count_mv"),
-        ("SELECT column_name FROM information_schema.columns WHERE table_name='signal_pnl_summary' ORDER BY ordinal_position", "mv_columns"),
-        ("SELECT version FROM alembic_version", "alembic_version"),
+        ("SELECT attname FROM pg_attribute WHERE attrelid='signal_pnl_summary'::regclass AND attnum>0 ORDER BY attnum", "mv_columns"),
+        ("SELECT version_num FROM alembic_version", "alembic_version"),
         ("SELECT COUNT(*) FROM signals", "count_signals"),
     ]:
         try:
