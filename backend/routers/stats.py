@@ -5,31 +5,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from database import get_db
-import traceback
 
 router = APIRouter(tags=["stats"])
 
-
-@router.get("/api/v1/stats/debug")
-async def stats_debug(db: AsyncSession = Depends(get_db)):
-    """Temporary debug endpoint — check DB state."""
-    from datetime import date as _date, timedelta
-    since = _date.today() - timedelta(days=60)
-    out = {}
-    for query, key, params in [
-        ("SELECT COUNT(*) FROM signal_pnl_summary", "count_mv", {}),
-        ("SELECT attname FROM pg_attribute WHERE attrelid='signal_pnl_summary'::regclass AND attnum>0 ORDER BY attnum", "mv_columns", {}),
-        ("SELECT version_num FROM alembic_version", "alembic_version", {}),
-        ("SELECT COUNT(*) FROM signals", "count_signals", {}),
-        ("""SELECT recommendation, COUNT(*) FROM signal_pnl_summary WHERE run_date >= :since AND portfolio_kind = 'top_cap' GROUP BY recommendation""", "pnl_sample", {"since": since}),
-    ]:
-        try:
-            r = await db.execute(text(query), params)
-            out[key] = [list(row) for row in r.fetchall()]
-        except Exception as e:
-            out[key] = f"ERROR: {e}"
-            await db.rollback()
-    return out
 
 
 def _price_filter_clause(price_min: Optional[float], price_max: Optional[float]) -> tuple[str, dict]:
@@ -75,7 +53,7 @@ async def get_pnl_stats(
         return [dict(row._mapping) for row in rows]
     except Exception as e:
         await db.rollback()
-        return JSONResponse(status_code=500, content={"error": str(e), "trace": traceback.format_exc()})
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @router.get("/api/v1/stats/accuracy")
@@ -106,4 +84,4 @@ async def get_accuracy_stats(
         return [dict(row._mapping) for row in rows]
     except Exception as e:
         await db.rollback()
-        return JSONResponse(status_code=500, content={"error": str(e), "trace": traceback.format_exc()})
+        return JSONResponse(status_code=500, content={"error": str(e)})
