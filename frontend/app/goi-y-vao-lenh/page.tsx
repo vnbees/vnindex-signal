@@ -5,12 +5,15 @@ import {
 } from "@/lib/api";
 import { formatDate, formatPrice } from "@/lib/utils";
 import { CapitalInputForm } from "@/components/CapitalInputForm";
+import { PriceFilter } from "@/components/PriceFilter";
 
 export const dynamic = "force-dynamic";
 
 interface Props {
   searchParams: {
     capital?: string;
+    price_min?: string;
+    price_max?: string;
   };
 }
 
@@ -21,13 +24,15 @@ function formatMoney(v: number | null | undefined): string {
 
 export default async function GoiYVaoLenhPage({ searchParams }: Props) {
   const capital = searchParams.capital ? Number(searchParams.capital) : undefined;
+  const priceMin = searchParams.price_min ? Number(searchParams.price_min) : undefined;
+  const priceMax = searchParams.price_max ? Number(searchParams.price_max) : undefined;
 
   let allocation: AllocationSuggestionResponse | null = null;
   let allocationError: string | null = null;
 
   if (capital !== undefined && capital > 0) {
     try {
-      allocation = await getAllocationSuggestion(capital);
+      allocation = await getAllocationSuggestion(capital, "top_cap", undefined, priceMin, priceMax);
     } catch {
       allocationError = "Không lấy được gợi ý phân bổ vốn.";
     }
@@ -43,8 +48,14 @@ export default async function GoiYVaoLenhPage({ searchParams }: Props) {
       </div>
 
       <div className="tv-panel p-4">
+        <div className="mb-3">
+          <PriceFilter />
+          <p className="text-xs text-tv-muted mt-2">
+            Khoảng giá sẽ được dùng để ưu tiên loại tín hiệu có thống kê PnL và winrate tốt nhất.
+          </p>
+        </div>
         <h2 className="tv-section-title mb-3">Nhập vốn muốn vào lệnh</h2>
-        <CapitalInputForm defaultCapital={capital} />
+        <CapitalInputForm defaultCapital={capital} priceMin={priceMin} priceMax={priceMax} />
 
         <h3 className="text-sm font-medium text-tv-text mb-3">Kết quả gợi ý mua theo vốn (lô chẵn)</h3>
         {capital === undefined ? (

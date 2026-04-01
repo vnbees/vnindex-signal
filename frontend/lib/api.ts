@@ -195,10 +195,16 @@ export async function searchSignalsBySymbol(
 export async function getAllocationSuggestion(
   capital: number,
   portfolioKind = "top_cap",
-  runDate?: string
+  runDate?: string,
+  priceMin?: number,
+  priceMax?: number,
+  days = 60
 ): Promise<AllocationSuggestionResponse> {
   let path = `/api/v1/allocation/suggest?capital=${capital}&portfolio_kind=${encodeURIComponent(portfolioKind)}`;
   if (runDate) path += `&run_date=${encodeURIComponent(runDate)}`;
+  if (priceMin !== undefined) path += `&price_min=${priceMin}`;
+  if (priceMax !== undefined) path += `&price_max=${priceMax}`;
+  if (days > 0) path += `&days=${days}`;
   return fetchAPI<AllocationSuggestionResponse>(path);
 }
 

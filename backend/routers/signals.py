@@ -17,6 +17,7 @@ from schemas.signal_output import (
 )
 from services.signal_service import upsert_signals
 from services.auth import verify_api_key
+from routers.stats import _price_filter_clause
 
 router = APIRouter(tags=["signals"])
 
@@ -208,6 +209,9 @@ async def suggest_allocation(
     portfolio_kind: str = "top_cap",
     lot_size: int = 100,
     max_items: int = 8,
+    price_min: Optional[float] = None,
+    price_max: Optional[float] = None,
+    days: int = 60,
     db: AsyncSession = Depends(get_db),
 ):
     if capital <= 0:
@@ -223,6 +227,74 @@ async def suggest_allocation(
         chosen_date = latest_date_result.scalar_one_or_none()
         if chosen_date is None:
             raise HTTPException(status_code=404, detail="No run data found")
+
+    use_price_bucket = price_min is not None or price_max is not None
+    price_sql, price_params = _price_filter_clause(price_min, price_max)
+    hold_perf_from_bucket: float | None = None
+    bucket_by_rec: dict[str, dict] = {}
+    if use_price_bucket:
+        bucket_pnl_result = await db.execute(
+            text(
+                f"""
+                SELECT
+                    recommendation,
+                    COUNT(*) AS total,
+                    ROUND(AVG(pnl_d3), 2) AS avg_pnl_d3,
+                    ROUND(AVG(pnl_d10), 2) AS avg_pnl_d10,
+                    ROUND(AVG(pnl_d20), 2) AS avg_pnl_d20,
+                    ROUND(AVG(latest_pnl_pct), 2) AS avg_latest_pnl
+                FROM signal_pnl_summary
+                WHERE run_date >= :since_date
+                  AND portfolio_kind = :portfolio_kind
+                  {price_sql}
+                GROUP BY recommendation
+                """
+            ),
+            {
+                "since_date": chosen_date - timedelta(days=max(days, 1)),
+                "portfolio_kind": portfolio_kind,
+                **price_params,
+            },
+        )
+        for row in bucket_pnl_result.fetchall():
+            row_dict = dict(row._mapping)
+            rec = row_dict.get("recommendation")
+            if rec:
+                bucket_by_rec[rec] = row_dict
+
+        bucket_acc_result = await db.execute(
+            text(
+                f"""
+                SELECT
+                    recommendation,
+                    COUNT(*) AS total,
+                    ROUND(100.0 * SUM(CASE WHEN pnl_d3 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d3), 0), 1) AS winrate_d3,
+                    ROUND(100.0 * SUM(CASE WHEN pnl_d10 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d10), 0), 1) AS winrate_d10,
+                    ROUND(100.0 * SUM(CASE WHEN pnl_d20 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d20), 0), 1) AS winrate_d20
+                FROM signal_pnl_summary
+                WHERE portfolio_kind = :portfolio_kind
+                  {price_sql}
+                GROUP BY recommendation
+                """
+            ),
+            {"portfolio_kind": portfolio_kind, **price_params},
+        )
+        for row in bucket_acc_result.fetchall():
+            row_dict = dict(row._mapping)
+            rec = row_dict.get("recommendation")
+            if not rec:
+                continue
+            current = bucket_by_rec.get(rec, {})
+            current.update(row_dict)
+            bucket_by_rec[rec] = current
+
+        hold_bucket = bucket_by_rec.get("HOLD")
+        if hold_bucket:
+            for key in ("avg_pnl_d3", "avg_pnl_d10", "avg_pnl_d20", "avg_latest_pnl"):
+                value = hold_bucket.get(key)
+                if value is not None:
+                    hold_perf_from_bucket = float(value)
+                    break
 
     candidate_result = await db.execute(
         text(
@@ -269,7 +341,7 @@ async def suggest_allocation(
               AND s.price_close_signal_date > 0
               AND (
                 s.recommendation IN ('BUY_STRONG', 'BUY')
-                OR (s.recommendation = 'HOLD' AND COALESCE(ps.avg_pnl_d3, ps.avg_pnl_d10, ps.avg_pnl_d20, -999) >= 1.0)
+                OR (s.recommendation = 'HOLD' AND COALESCE(:hold_bucket_perf, ps.avg_pnl_d3, ps.avg_pnl_d10, ps.avg_pnl_d20, -999) >= 1.0)
               )
             ORDER BY s.run_date DESC, s.score_total DESC
             LIMIT :candidate_limit
@@ -280,6 +352,7 @@ async def suggest_allocation(
             "portfolio_kind": portfolio_kind,
             "since_date": chosen_date - timedelta(days=365),
             "candidate_limit": max(20, min(max_items * 6, 200)),
+            "hold_bucket_perf": hold_perf_from_bucket,
         },
     )
     rows = [dict(r._mapping) for r in candidate_result.fetchall()]
@@ -321,17 +394,28 @@ async def suggest_allocation(
 
     scored = []
     for row in rows:
-        avg_pnl_d3 = val_or_none(row.get("avg_pnl_d3"))
-        avg_pnl_d10 = val_or_none(row.get("avg_pnl_d10"))
-        avg_pnl_d20 = val_or_none(row.get("avg_pnl_d20"))
-        avg_latest = val_or_none(row.get("avg_latest_pnl"))
-        winrate_d3 = val_or_none(row.get("winrate_d3"))
-        winrate_d10 = val_or_none(row.get("winrate_d10"))
-        winrate_d20 = val_or_none(row.get("winrate_d20"))
-        samples_d3 = int(row.get("samples_d3") or 0)
-        samples_d10 = int(row.get("samples_d10") or 0)
-        samples_d20 = int(row.get("samples_d20") or 0)
-        total_samples = samples_d3 + samples_d10 + samples_d20
+        symbol_samples_d3 = int(row.get("samples_d3") or 0)
+        symbol_samples_d10 = int(row.get("samples_d10") or 0)
+        symbol_samples_d20 = int(row.get("samples_d20") or 0)
+        symbol_total_samples = symbol_samples_d3 + symbol_samples_d10 + symbol_samples_d20
+
+        source_is_bucket = False
+        stats_source = row
+        if use_price_bucket:
+            rec_bucket = bucket_by_rec.get(row["recommendation"])
+            rec_total = int((rec_bucket or {}).get("total") or 0)
+            if rec_bucket and rec_total > 0:
+                source_is_bucket = True
+                stats_source = rec_bucket
+
+        avg_pnl_d3 = val_or_none(stats_source.get("avg_pnl_d3"))
+        avg_pnl_d10 = val_or_none(stats_source.get("avg_pnl_d10"))
+        avg_pnl_d20 = val_or_none(stats_source.get("avg_pnl_d20"))
+        avg_latest = val_or_none(stats_source.get("avg_latest_pnl"))
+        winrate_d3 = val_or_none(stats_source.get("winrate_d3"))
+        winrate_d10 = val_or_none(stats_source.get("winrate_d10"))
+        winrate_d20 = val_or_none(stats_source.get("winrate_d20"))
+        total_samples = int(stats_source.get("total") or 0) if source_is_bucket else symbol_total_samples
 
         short_term_pnl = first_available([avg_pnl_d3, avg_pnl_d10, avg_pnl_d20, avg_latest])
         short_term_winrate = first_available([winrate_d3, winrate_d10, winrate_d20])
@@ -344,7 +428,19 @@ async def suggest_allocation(
         # PnL-driven scoring: performance dominates; signal score is only a light tie-breaker.
         base_score = 0.80 * pnl_score + 0.15 * winrate_score + 0.05 * recency_signal_score
         final_score = max(base_score * signal_factor(row["recommendation"]), 0.001)
-        scored.append({**row, "final_score": final_score})
+        scored.append(
+            {
+                **row,
+                "final_score": final_score,
+                "metric_avg_pnl_d3": avg_pnl_d3,
+                "metric_avg_pnl_d10": avg_pnl_d10,
+                "metric_avg_pnl_d20": avg_pnl_d20,
+                "metric_winrate_d3": winrate_d3,
+                "metric_winrate_d10": winrate_d10,
+                "metric_winrate_d20": winrate_d20,
+                "used_price_bucket_metrics": source_is_bucket,
+            }
+        )
 
     scored.sort(key=lambda x: x["final_score"], reverse=True)
     scored = scored[: max(1, min(max_items, 20))]
@@ -375,12 +471,12 @@ async def suggest_allocation(
             continue
         amount_to_buy = (price * qty_lot).quantize(Decimal("0.01"))
         remaining -= amount_to_buy
-        avg_pnl_d3 = val_or_none(item.get("avg_pnl_d3"))
-        avg_pnl_d10 = val_or_none(item.get("avg_pnl_d10"))
-        avg_pnl_d20 = val_or_none(item.get("avg_pnl_d20"))
-        winrate_d3 = val_or_none(item.get("winrate_d3"))
-        winrate_d10 = val_or_none(item.get("winrate_d10"))
-        winrate_d20 = val_or_none(item.get("winrate_d20"))
+        avg_pnl_d3 = val_or_none(item.get("metric_avg_pnl_d3"))
+        avg_pnl_d10 = val_or_none(item.get("metric_avg_pnl_d10"))
+        avg_pnl_d20 = val_or_none(item.get("metric_avg_pnl_d20"))
+        winrate_d3 = val_or_none(item.get("metric_winrate_d3"))
+        winrate_d10 = val_or_none(item.get("metric_winrate_d10"))
+        winrate_d20 = val_or_none(item.get("metric_winrate_d20"))
         rec = item["recommendation"]
 
         rec_label_map = {
@@ -393,6 +489,8 @@ async def suggest_allocation(
         rec_label = rec_label_map.get(rec, rec)
 
         reasons: list[str] = [f"Tín hiệu hiện tại: {rec_label}."]
+        if item.get("used_price_bucket_metrics"):
+            reasons.append("Điểm ưu tiên dựa trên thống kê theo loại tín hiệu trong khoảng giá bạn đã chọn.")
 
         if (avg_pnl_d3 is not None and avg_pnl_d3 > 0) or (avg_pnl_d10 is not None and avg_pnl_d10 > 0):
             reasons.append(

@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 interface Props {
   defaultCapital?: number;
   symbol?: string;
+  priceMin?: number;
+  priceMax?: number;
 }
 
 function digitsOnly(value: string): string {
@@ -18,7 +20,7 @@ function formatCapital(value: string): string {
   return new Intl.NumberFormat("vi-VN").format(n);
 }
 
-export function CapitalInputForm({ defaultCapital, symbol }: Props) {
+export function CapitalInputForm({ defaultCapital, symbol, priceMin, priceMax }: Props) {
   const initialDigits = useMemo(() => (defaultCapital && defaultCapital > 0 ? String(Math.trunc(defaultCapital)) : ""), [defaultCapital]);
   const [capitalDigits, setCapitalDigits] = useState(initialDigits);
 
@@ -26,6 +28,8 @@ export function CapitalInputForm({ defaultCapital, symbol }: Props) {
     <form method="GET" className="flex flex-wrap items-end gap-3 mb-4">
       {symbol && <input type="hidden" name="symbol" value={symbol} />}
       <input type="hidden" name="capital" value={capitalDigits} />
+      {priceMin !== undefined && <input type="hidden" name="price_min" value={priceMin} />}
+      {priceMax !== undefined && <input type="hidden" name="price_max" value={priceMax} />}
       <label className="min-w-[220px] flex-1">
         <span className="text-xs text-tv-muted">Vốn muốn vào lệnh (đ)</span>
         <input
