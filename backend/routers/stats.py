@@ -14,17 +14,21 @@ router = APIRouter(tags=["stats"])
 async def stats_debug(db: AsyncSession = Depends(get_db)):
     """Temporary debug endpoint — check DB state."""
     out = {}
-    for query, key in [
-        ("SELECT COUNT(*) FROM signal_pnl_summary", "count_mv"),
-        ("SELECT attname FROM pg_attribute WHERE attrelid='signal_pnl_summary'::regclass AND attnum>0 ORDER BY attnum", "mv_columns"),
-        ("SELECT version_num FROM alembic_version", "alembic_version"),
-        ("SELECT COUNT(*) FROM signals", "count_signals"),
+    from datetime import date as _date, timedelta
+    since = _date.today() - timedelta(days=60)
+    for query, key, params in [
+        ("SELECT COUNT(*) FROM signal_pnl_summary", "count_mv", {}),
+        ("SELECT attname FROM pg_attribute WHERE attrelid='signal_pnl_summary'::regclass AND attnum>0 ORDER BY attnum", "mv_columns", {}),
+        ("SELECT version_num FROM alembic_version", "alembic_version", {}),
+        ("SELECT COUNT(*) FROM signals", "count_signals", {}),
+        ("""SELECT recommendation, COUNT(*) FROM signal_pnl_summary WHERE run_date >= :since AND portfolio_kind = 'top_cap' GROUP BY recommendation""", "pnl_sample", {"since": since}),
     ]:
         try:
-            r = await db.execute(text(query))
+            r = await db.execute(text(query), params)
             out[key] = [list(row) for row in r.fetchall()]
         except Exception as e:
             out[key] = f"ERROR: {e}"
+            await db.rollback()
     return out
 
 
