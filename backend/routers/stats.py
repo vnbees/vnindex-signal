@@ -10,6 +10,24 @@ import traceback
 router = APIRouter(tags=["stats"])
 
 
+@router.get("/api/v1/stats/debug")
+async def stats_debug(db: AsyncSession = Depends(get_db)):
+    """Temporary debug endpoint — check DB state."""
+    out = {}
+    for query, key in [
+        ("SELECT COUNT(*) FROM signal_pnl_summary", "count_mv"),
+        ("SELECT column_name FROM information_schema.columns WHERE table_name='signal_pnl_summary' ORDER BY ordinal_position", "mv_columns"),
+        ("SELECT version FROM alembic_version", "alembic_version"),
+        ("SELECT COUNT(*) FROM signals", "count_signals"),
+    ]:
+        try:
+            r = await db.execute(text(query))
+            out[key] = [list(row) for row in r.fetchall()]
+        except Exception as e:
+            out[key] = f"ERROR: {e}"
+    return out
+
+
 @router.get("/api/v1/stats/pnl")
 async def get_pnl_stats(
     days: int = 60,
