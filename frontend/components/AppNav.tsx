@@ -7,6 +7,8 @@ import { usePathname } from "next/navigation";
 const LINKS = [
   { href: "/thong-ke-tin-hieu-co-phieu-hom-nay", label: "Thống kê" },
   { href: "/signals", label: "Tín hiệu" },
+  { href: "/search-theo-ma", label: "Tìm kiếm theo mã" },
+  { href: "/goi-y-vao-lenh", label: "Gợi ý vốn" },
 ];
 
 function navClass(active: boolean) {
@@ -40,6 +42,10 @@ export function AppNav() {
           const active =
             href === "/signals"
               ? pathname === "/signals" || pathname?.startsWith("/signals/")
+              : href === "/goi-y-vao-lenh"
+                ? pathname === "/goi-y-vao-lenh" || pathname?.startsWith("/goi-y-vao-lenh/")
+              : href === "/search-theo-ma"
+                ? pathname === "/search-theo-ma" || pathname?.startsWith("/search-theo-ma/")
               : pathname === href || pathname?.startsWith(href);
           return (
             <Link key={href} href={href} className={navClass(!!active)}>

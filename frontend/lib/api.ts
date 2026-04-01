@@ -61,6 +61,50 @@ export interface AccuracyStat {
   winrate_d20: number | null;
 }
 
+export interface SymbolSearchResult {
+  symbol: string;
+  signals: Signal[];
+  stats: {
+    symbol: string;
+    total_signals: number;
+    buy_strong_count: number;
+    buy_count: number;
+    hold_count: number;
+    avg_pnl_d3: number | null;
+    avg_pnl_d10: number | null;
+    avg_pnl_d20: number | null;
+    avg_latest_pnl: number | null;
+    winrate_d3: number | null;
+    winrate_d10: number | null;
+    winrate_d20: number | null;
+  } | null;
+}
+
+export interface AllocationSuggestionItem {
+  symbol: string;
+  recommendation: string;
+  reference_price: number;
+  final_score: number;
+  allocated_amount: number;
+  quantity: number;
+  amount_to_buy: number;
+  reasons: string[];
+}
+
+export interface AllocationSuggestionResponse {
+  run_date: string;
+  portfolio_kind: string;
+  capital: number;
+  total_planned: number;
+  cash_left: number;
+  lot_size: number;
+  min_required_capital?: number | null;
+  min_required_symbol?: string | null;
+  min_required_reference_price?: number | null;
+  no_result_message?: string | null;
+  suggestions: AllocationSuggestionItem[];
+}
+
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${getApiUrl()}${path}`, {
     ...options,
@@ -111,24 +155,50 @@ export async function getSignalDetail(
 export async function getPnlStats(
   days = 60,
   priceMin?: number,
-  priceMax?: number
+  priceMax?: number,
+  symbol?: string,
+  portfolioKind = "top_cap"
 ): Promise<PnlStat[]> {
-  let path = `/api/v1/stats/pnl?days=${days}`;
+  let path = `/api/v1/stats/pnl?days=${days}&portfolio_kind=${encodeURIComponent(portfolioKind)}`;
   if (priceMin !== undefined) path += `&price_min=${priceMin}`;
   if (priceMax !== undefined) path += `&price_max=${priceMax}`;
+  if (symbol && symbol.trim()) path += `&symbol=${encodeURIComponent(symbol.trim().toUpperCase())}`;
   return fetchAPI<PnlStat[]>(path);
 }
 
 export async function getAccuracyStats(
   priceMin?: number,
-  priceMax?: number
+  priceMax?: number,
+  symbol?: string,
+  portfolioKind = "top_cap"
 ): Promise<AccuracyStat[]> {
   let path = "/api/v1/stats/accuracy";
-  const params: string[] = [];
+  const params: string[] = [`portfolio_kind=${encodeURIComponent(portfolioKind)}`];
   if (priceMin !== undefined) params.push(`price_min=${priceMin}`);
   if (priceMax !== undefined) params.push(`price_max=${priceMax}`);
+  if (symbol && symbol.trim()) params.push(`symbol=${encodeURIComponent(symbol.trim().toUpperCase())}`);
   if (params.length > 0) path += `?${params.join("&")}`;
   return fetchAPI<AccuracyStat[]>(path);
+}
+
+export async function searchSignalsBySymbol(
+  symbol: string,
+  limit = 50,
+  portfolioKind?: string
+): Promise<SymbolSearchResult> {
+  let path = `/api/v1/search/signals-by-symbol?symbol=${encodeURIComponent(symbol)}&limit=${limit}`;
+  if (portfolioKind) path += `&portfolio_kind=${encodeURIComponent(portfolioKind)}`;
+  return fetchAPI<SymbolSearchResult>(path);
+}
+
+export async function getAllocationSuggestion(
+  capital: number,
+  portfolioKind = "top_cap",
+  runDate?: string
+): Promise<AllocationSuggestionResponse> {
+  let path = `/api/v1/allocation/suggest?capital=${capital}&portfolio_kind=${encodeURIComponent(portfolioKind)}`;
+  if (runDate) path += `&run_date=${encodeURIComponent(runDate)}`;
+  return fetchAPI<AllocationSuggestionResponse>(path);
 }
 
 export interface FeedbackSubmit {

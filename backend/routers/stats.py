@@ -28,12 +28,18 @@ async def get_pnl_stats(
     days: int = 60,
     price_min: Optional[float] = None,
     price_max: Optional[float] = None,
+    symbol: Optional[str] = None,
+    portfolio_kind: str = "top_cap",
     db: AsyncSession = Depends(get_db)
 ):
     try:
         since_date = date.today() - timedelta(days=days)
         price_sql, price_params = _price_filter_clause(price_min, price_max)
-        params = {"since_date": since_date, **price_params}
+        symbol_sql = ""
+        params = {"since_date": since_date, "portfolio_kind": portfolio_kind, **price_params}
+        if symbol and symbol.strip():
+            symbol_sql = " AND symbol ILIKE :symbol "
+            params["symbol"] = f"%{symbol.strip().upper()}%"
         result = await db.execute(text(f"""
             SELECT
                 recommendation,
@@ -44,8 +50,9 @@ async def get_pnl_stats(
                 ROUND(AVG(latest_pnl_pct), 2) AS avg_latest_pnl
             FROM signal_pnl_summary
             WHERE run_date >= :since_date
-              AND portfolio_kind = 'top_cap'
+              AND portfolio_kind = :portfolio_kind
               {price_sql}
+              {symbol_sql}
             GROUP BY recommendation
             ORDER BY recommendation
         """), params)
@@ -60,10 +67,17 @@ async def get_pnl_stats(
 async def get_accuracy_stats(
     price_min: Optional[float] = None,
     price_max: Optional[float] = None,
+    symbol: Optional[str] = None,
+    portfolio_kind: str = "top_cap",
     db: AsyncSession = Depends(get_db)
 ):
     try:
         price_sql, price_params = _price_filter_clause(price_min, price_max)
+        symbol_sql = ""
+        params = {"portfolio_kind": portfolio_kind, **price_params}
+        if symbol and symbol.strip():
+            symbol_sql = " AND symbol ILIKE :symbol "
+            params["symbol"] = f"%{symbol.strip().upper()}%"
         result = await db.execute(text(f"""
             SELECT
                 recommendation,
@@ -75,11 +89,12 @@ async def get_accuracy_stats(
                 ROUND(100.0 * SUM(CASE WHEN pnl_d10 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d10), 0), 1) AS winrate_d10,
                 ROUND(100.0 * SUM(CASE WHEN pnl_d20 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d20), 0), 1) AS winrate_d20
             FROM signal_pnl_summary
-            WHERE portfolio_kind = 'top_cap'
+            WHERE portfolio_kind = :portfolio_kind
               {price_sql}
+              {symbol_sql}
             GROUP BY recommendation
             ORDER BY recommendation
-        """), price_params)
+        """), params)
         rows = result.fetchall()
         return [dict(row._mapping) for row in rows]
     except Exception as e:
