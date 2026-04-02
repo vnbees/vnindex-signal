@@ -7,6 +7,11 @@ const nextConfig = {
   async redirects() {
     return [
       {
+        source: "/",
+        destination: "/thong-ke-tin-hieu-co-phieu-hom-nay",
+        permanent: true,
+      },
+      {
         source: "/stats",
         destination: "/thong-ke-tin-hieu-co-phieu-hom-nay",
         permanent: true,
