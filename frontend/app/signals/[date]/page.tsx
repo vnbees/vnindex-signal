@@ -49,15 +49,18 @@ export default async function SignalsDatePage({ params }: Props) {
       <div className="mb-4 rounded-lg border border-tv-info-border bg-tv-info-bg px-4 py-3 flex items-center gap-2.5">
         <span className="text-tv-accent flex-shrink-0">ℹ</span>
         <p className="text-xs text-tv-text/90 leading-relaxed">
-          <span className="font-medium text-tv-text">Mô hình phân tích kỹ thuật độc quyền</span> đã kiểm tra trên dữ liệu lịch sử VN-Index.{" "}
-          Hiệu suất quá khứ không đảm bảo kết quả tương lai. Không phải lời khuyên đầu tư — luôn tự nghiên cứu và quản lý rủi ro.
+          Nhãn khuyến nghị do <span className="font-medium text-tv-text">mô hình thống kê nội bộ</span> gán từ dữ liệu lịch sử; không
+          dự báo giá hay đảm bảo lợi nhuận. Không phải tư vấn đầu tư — tự nghiên cứu và quản lý rủi ro.{" "}
+          <Link href="/mien-tru-trach-nhiem" className="text-tv-accent hover:underline underline-offset-2">
+            Miễn trừ
+          </Link>
         </p>
       </div>
 
       <SignalTable signals={signals} runDate={date} />
 
       <p className="text-xs text-tv-muted mt-4">
-        * PnL tính từ giá mở cửa T+1 (giá thực tế có thể mua được). Cập nhật mỗi ngày từ 15h30-16h30.
+        * PnL minh họa theo giá mở cửa T+1 (thực tế có thể khác). Cập nhật hậu phiên (khung giờ tham khảo).
       </p>
     </div>
   );

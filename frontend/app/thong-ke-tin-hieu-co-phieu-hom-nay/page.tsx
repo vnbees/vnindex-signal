@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { getPnlStats, getAccuracyStats, type PnlStat, type AccuracyStat } from "@/lib/api";
 import { PnlStatsChart } from "@/components/PnlStatsChart";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Thống kê tín hiệu cổ phiếu hôm nay",
   description:
-    "Thống kê hiệu suất PnL và win rate theo khuyến nghị ViiStock — dữ liệu HOSE, cập nhật hàng ngày.",
+    "Thống kê PnL và tỷ lệ thắng theo nhãn khuyến nghị (dữ liệu lịch sử HOSE). Tham khảo; không phải lời khuyên đầu tư.",
 };
 
 function pnlCellClass(v: number | null | undefined) {
@@ -59,7 +60,14 @@ export default async function ThongKeTinHieuPage({ searchParams }: Props) {
       </div>
 
       <div className="tv-panel p-6 mb-6">
-        <h2 className="tv-section-title mb-1">PnL trung bình theo khuyến nghị (60 ngày)</h2>
+        <h2 className="tv-section-title mb-1">PnL trung bình theo nhãn khuyến nghị (60 ngày gần đây)</h2>
+        <p className="text-xs text-tv-muted mb-4 leading-relaxed">
+          Số liệu là <strong className="text-tv-text font-medium">thống kê lịch sử</strong> theo quy tắc tính của website; không
+          đảm bảo kết quả tương lai.{" "}
+          <Link href="/mien-tru-trach-nhiem" className="text-tv-accent hover:underline underline-offset-2">
+            Miễn trừ trách nhiệm
+          </Link>
+        </p>
         {filterLabel && (
           <p className="text-xs text-tv-muted mb-4">
             Lọc giá: <span className="text-tv-accent font-medium">{filterLabel}</span>
@@ -104,8 +112,8 @@ export default async function ThongKeTinHieuPage({ searchParams }: Props) {
         )}
       </div>
 
-      <div className="tv-panel p-6">
-        <h2 className="tv-section-title mb-1">Win Rate (PnL &gt; 0)</h2>
+      <div className="tv-panel p-6 mb-6">
+        <h2 className="tv-section-title mb-1">Tỷ lệ PnL dương theo nhãn (thống kê lịch sử)</h2>
         {filterLabel && (
           <p className="text-xs text-tv-muted mb-4">
             Lọc giá: <span className="text-tv-accent font-medium">{filterLabel}</span>
@@ -146,6 +154,11 @@ export default async function ThongKeTinHieuPage({ searchParams }: Props) {
           <p className="text-tv-muted text-center py-8">Chưa có dữ liệu thống kê.</p>
         )}
       </div>
+
+      <p className="text-xs text-tv-muted leading-relaxed max-w-3xl">
+        &quot;Khuyến nghị&quot; trên bảng chỉ là <strong className="text-tv-text font-medium">nhãn phân loại tín hiệu</strong> do
+        mô hình gán; không phải lời mua/bán cá nhân hóa. Dùng song song với nghiên cứu riêng và quản trị rủi ro.
+      </p>
     </div>
   );
 }

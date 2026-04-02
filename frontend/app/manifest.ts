@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "ViiStock",
     short_name: "ViiStock",
-    description: "Tín hiệu mua/bán cổ phiếu HOSE",
+    description: "Thống kê tín hiệu cổ phiếu HOSE (tham khảo, không phải tư vấn đầu tư).",
     start_url: "/",
     display: "standalone",
     background_color: "#131722",

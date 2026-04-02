@@ -8,7 +8,7 @@ const LINKS = [
   { href: "/thong-ke-tin-hieu-co-phieu-hom-nay", label: "Thống kê" },
   { href: "/signals", label: "Tín hiệu" },
   { href: "/search-theo-ma", label: "Tìm kiếm theo mã" },
-  { href: "/goi-y-vao-lenh", label: "Gợi ý vốn" },
+  { href: "/goi-y-vao-lenh", label: "Phân bổ vốn" },
 ];
 
 function navClass(active: boolean) {

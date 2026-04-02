@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { RecommendationBadge } from "@/components/RecommendationBadge";
 import { searchSignalsBySymbol, type SymbolSearchResult } from "@/lib/api";
 import { formatDate, formatPnl, formatPrice, getPnlClass } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Tra cứu tín hiệu theo mã",
+  description:
+    "Tra cứu lịch sử tín hiệu và PnL theo mã cổ phiếu HOSE. Dữ liệu tham khảo; không phải khuyến nghị đầu tư cá nhân.",
+};
 
 interface Props {
   searchParams: {
@@ -29,7 +36,9 @@ export default async function SearchTheoMaPage({ searchParams }: Props) {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-semibold text-tv-text tracking-tight">Search theo mã cổ phiếu</h1>
-          <p className="text-sm text-tv-muted mt-1">Tra cứu tín hiệu và thống kê theo từng mã cổ phiếu.</p>
+          <p className="text-sm text-tv-muted mt-1">
+            Tra cứu tín hiệu và số liệu lịch sử theo từng mã (tham khảo).
+          </p>
         </div>
       </div>
 

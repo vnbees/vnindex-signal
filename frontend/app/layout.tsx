@@ -3,6 +3,7 @@ import Script from "next/script";
 import { IBM_Plex_Sans } from "next/font/google";
 import { AppNav } from "@/components/AppNav";
 import { FeedbackWidget } from "@/components/FeedbackWidget";
+import { SiteFooter } from "@/components/SiteFooter";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import "./globals.css";
 
@@ -14,7 +15,8 @@ const ibmSans = IBM_Plex_Sans({
 
 export const metadata: Metadata = {
   title: "ViiStock",
-  description: "Tín hiệu mua/bán cổ phiếu HOSE",
+  description:
+    "Công cụ thống kê tín hiệu cổ phiếu HOSE: dữ liệu lịch sử, PnL tham khảo. Không phải lời khuyên đầu tư hay môi giới.",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
@@ -48,7 +50,18 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const gaId = process.env.NEXT_PUBLIC_GA_ID;
+  const gaId = process.env.NEXT_PUBLIC_GA_ID?.trim();
+  const googleAdsId = process.env.NEXT_PUBLIC_GOOGLE_ADS_ID?.trim();
+  const gtagLoaderId = gaId || googleAdsId;
+  const gtagInitScript =
+    gtagLoaderId &&
+    `
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                ${gaId ? `gtag('config', ${JSON.stringify(gaId)});` : ""}
+                ${googleAdsId ? `gtag('config', ${JSON.stringify(googleAdsId)});` : ""}
+              `.trim();
 
   return (
     <html lang="vi" suppressHydrationWarning>
@@ -58,24 +71,19 @@ export default function RootLayout({
             __html: `(function(){try{var t=localStorage.getItem('vii-theme');document.documentElement.setAttribute('data-theme',t==='light'||t==='dark'?t:'dark');}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`,
           }}
         />
-        {gaId && (
+        {gtagLoaderId && gtagInitScript && (
           <>
             <Script
-              src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`}
+              src={`https://www.googletagmanager.com/gtag/js?id=${gtagLoaderId}`}
               strategy="afterInteractive"
             />
-            <Script id="google-analytics" strategy="afterInteractive">
-              {`
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                gtag('js', new Date());
-                gtag('config', '${gaId}');
-              `}
+            <Script id="google-tags" strategy="afterInteractive">
+              {gtagInitScript}
             </Script>
           </>
         )}
       </head>
-      <body className={`${ibmSans.className} min-h-screen bg-tv-bg antialiased tabular-nums`}>
+      <body className={`${ibmSans.className} min-h-screen flex flex-col bg-tv-bg antialiased tabular-nums`}>
         <header className="border-b border-tv-border bg-tv-bg px-4 py-3">
           <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
             <AppNav />
@@ -85,20 +93,21 @@ export default function RootLayout({
         <div className="border-b border-tv-border bg-tv-panel/50 px-4 py-2.5">
           <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-tv-muted">
             <span className="flex items-center gap-1.5">
-              <span className="text-tv-accent">✓</span>
-              Mô hình proprietary (độc quyền) đã được kiểm tra trên dữ liệu lịch sử VN-Index
+              <span className="text-tv-accent">•</span>
+              Mô hình thống kê riêng; kết quả hiển thị dựa trên dữ liệu lịch sử — không dự báo hiệu suất tương lai
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="text-tv-accent">✓</span>
-              Cập nhật tín hiệu hàng ngày từ 15h30–16h30
+              <span className="text-tv-accent">•</span>
+              Cập nhật tín hiệu hàng ngày (khung giờ hậu phiên, tham khảo)
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="text-tv-accent">✓</span>
-              PnL tính từ giá thực tế (giá mở cửa T+1)
+              <span className="text-tv-accent">•</span>
+              PnL minh họa theo giá thực tế (ví dụ giá mở cửa T+1), mang tính tham khảo
             </span>
           </div>
         </div>
-        <main className="max-w-7xl mx-auto px-4 py-6 text-tv-text">{children}</main>
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 text-tv-text">{children}</main>
+        <SiteFooter />
         <FeedbackWidget />
       </body>
     </html>

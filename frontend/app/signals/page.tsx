@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getRuns, type Run } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Danh sách ngày phân tích",
+  description:
+    "Lịch các phiên có dữ liệu tín hiệu ViiStock (HOSE). Thông tin tham khảo; không phải dịch vụ môi giới.",
+};
 
 export default async function SignalsListPage() {
   let runs: Run[] = [];

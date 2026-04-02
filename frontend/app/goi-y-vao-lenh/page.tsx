@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import Link from "next/link";
 import { RecommendationBadge } from "@/components/RecommendationBadge";
 import {
   getAllocationSuggestion,
@@ -8,6 +10,12 @@ import { CapitalInputForm } from "@/components/CapitalInputForm";
 import { PriceFilter } from "@/components/PriceFilter";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Gợi ý phân bổ vốn (minh họa)",
+  description:
+    "Minh họa phân bổ vốn theo lô chẵn từ tín hiệu lịch sử. Tham khảo; không phải lời khuyên mua bán hay môi giới.",
+};
 
 interface Props {
   searchParams: {
@@ -42,8 +50,14 @@ export default async function GoiYVaoLenhPage({ searchParams }: Props) {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold text-tv-text tracking-tight">Gợi ý vào lệnh theo vốn</h1>
-          <p className="text-sm text-tv-muted mt-1">Ưu tiên PnL, phân bổ theo lô chẵn 100 và không vượt vốn.</p>
+          <h1 className="text-xl font-semibold text-tv-text tracking-tight">Gợi ý phân bổ vốn (minh họa)</h1>
+          <p className="text-sm text-tv-muted mt-1">
+            Mô phỏng phân bổ theo lô 100 cổ phiếu, không vượt số vốn nhập — dựa trên quy tắc nội bộ và dữ liệu lịch sử;{" "}
+            <Link href="/mien-tru-trach-nhiem" className="text-tv-accent hover:underline underline-offset-2">
+              không phải lời khuyên đầu tư
+            </Link>
+            .
+          </p>
         </div>
       </div>
 
@@ -51,15 +65,18 @@ export default async function GoiYVaoLenhPage({ searchParams }: Props) {
         <div className="mb-3">
           <PriceFilter />
           <p className="text-xs text-tv-muted mt-2">
-            Không chọn khoảng giá: hệ thống sẽ tự chọn bucket giá có winrate tốt hơn. Bạn vẫn có thể chọn tay để override.
+            Không chọn khoảng giá: hệ thống có thể tự chọn bucket giá có tỷ lệ PnL dương lịch sử cao hơn trong mẫu. Bạn vẫn có
+            thể chọn tay để ghi đè.
           </p>
         </div>
         <h2 className="tv-section-title mb-3">Nhập vốn muốn vào lệnh</h2>
         <CapitalInputForm defaultCapital={capital} priceMin={priceMin} priceMax={priceMax} />
 
-        <h3 className="text-sm font-medium text-tv-text mb-3">Kết quả gợi ý mua theo vốn (lô chẵn)</h3>
+        <h3 className="text-sm font-medium text-tv-text mb-3">Kết quả minh họa theo vốn nhập (lô chẵn)</h3>
         {capital === undefined ? (
-          <p className="text-sm text-tv-muted">Nhập vốn để hệ thống gợi ý cổ phiếu nên mua ở phiên tiếp theo.</p>
+          <p className="text-sm text-tv-muted">
+            Nhập vốn để xem ví dụ phân bổ theo tín hiệu gần nhất — chỉ mang tính tham khảo, không phải đề nghị giao dịch.
+          </p>
         ) : allocationError ? (
           <p className="text-sm text-tv-down">{allocationError}</p>
         ) : !allocation ? (
