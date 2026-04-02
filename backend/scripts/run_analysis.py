@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 # ─── THÔNG SỐ ────────────────────────────────────────────────────────────────
-TODAY = date(2026, 4, 1)    # Thứ Tư
+TODAY = date(2026, 4, 2)    # Thứ Năm
 HOLD_DAYS = 20
 
 _DEFAULT_FIREANT = (

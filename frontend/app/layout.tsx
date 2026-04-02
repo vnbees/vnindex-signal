@@ -17,6 +17,9 @@ export const metadata: Metadata = {
   title: "ViiStock",
   description:
     "Công cụ thống kê tín hiệu cổ phiếu HOSE: dữ liệu lịch sử, PnL tham khảo. Không phải lời khuyên đầu tư hay môi giới.",
+  verification: {
+    google: "wl1UgbSWQ9JFEANdXeE_wX5XbqSk4b2ugKWGV24LucQ",
+  },
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
