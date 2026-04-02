@@ -31,6 +31,7 @@ healthcheckPath = "/thong-ke-tin-hieu-co-phieu-hom-nay"
 healthcheckTimeout = 30
 
 [services.variables]
+# Railway does not mirror these into the dashboard Variables tab; add the same keys there if you want them visible (docs: Config as Code).
 NEXT_PUBLIC_API_URL = "https://${{backend.RAILWAY_PUBLIC_DOMAIN}}"
 # Server-side fetch for /admin/feedback (same host as public API; avoids missing client env in SSR)
 API_URL_INTERNAL = "https://${{backend.RAILWAY_PUBLIC_DOMAIN}}"
