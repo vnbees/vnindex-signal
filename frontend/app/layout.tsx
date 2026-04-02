@@ -54,7 +54,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const gaId = process.env.NEXT_PUBLIC_GA_ID?.trim();
-  const googleAdsId = process.env.NEXT_PUBLIC_GOOGLE_ADS_ID?.trim();
+  const googleAdsId = (
+    process.env.NEXT_PUBLIC_GOOGLE_ADS_ID ?? "AW-880926849"
+  ).trim();
   const gtagLoaderId = gaId || googleAdsId;
   const gtagInitScript =
     gtagLoaderId &&

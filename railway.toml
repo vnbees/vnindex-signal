@@ -35,7 +35,7 @@ NEXT_PUBLIC_API_URL = "https://${{backend.RAILWAY_PUBLIC_DOMAIN}}"
 # Server-side fetch for /admin/feedback (same host as public API; avoids missing client env in SSR)
 API_URL_INTERNAL = "https://${{backend.RAILWAY_PUBLIC_DOMAIN}}"
 NEXT_PUBLIC_GA_ID = "G-G6MDQP55NB"
-# Optional: set in Railway Variables for Google Ads — NEXT_PUBLIC_GOOGLE_ADS_ID = AW-...
+NEXT_PUBLIC_GOOGLE_ADS_ID = "AW-880926849"
 PORT = "3000"
 # ADMIN_API_KEY: set in Railway on the frontend service (Variables) — raw sk-vnindex-... matching api_keys.
 # Or use Shared Variables + reference ${{shared.ADMIN_API_KEY}} in the dashboard.
