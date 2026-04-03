@@ -12,8 +12,9 @@ export async function GET() {
       cache: "no-store",
     });
     if (!res.ok) return NextResponse.json({ run_date: null });
-    const runs = await res.json();
-    return NextResponse.json({ run_date: runs[0]?.run_date ?? null });
+    const data = await res.json();
+    const items = data.items ?? data;
+    return NextResponse.json({ run_date: items[0]?.run_date ?? null });
   } catch {
     return NextResponse.json({ run_date: null });
   }

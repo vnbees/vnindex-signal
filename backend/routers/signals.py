@@ -36,6 +36,12 @@ async def list_runs(
     portfolio_kind: str = "top_cap",
     db: AsyncSession = Depends(get_db)
 ):
+    total_result = await db.execute(
+        select(func.count()).select_from(AnalysisRun)
+        .where(AnalysisRun.portfolio_kind == portfolio_kind)
+    )
+    total = total_result.scalar_one()
+
     result = await db.execute(
         select(AnalysisRun)
         .where(AnalysisRun.portfolio_kind == portfolio_kind)
@@ -58,7 +64,7 @@ async def list_runs(
             hold_days=run.hold_days,
             signal_count=count
         ))
-    return items
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 @router.get("/api/v1/signals/{run_date}")
 async def get_signals_for_date(

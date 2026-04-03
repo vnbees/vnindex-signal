@@ -39,6 +39,13 @@ export interface Run {
   signal_count: number;
 }
 
+export interface PaginatedRuns {
+  items: Run[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface PnlStat {
   recommendation: string;
   total: number;
@@ -111,16 +118,22 @@ async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
 
 export async function getLatestRunDate(): Promise<string | null> {
   try {
-    const runs = await fetchAPI<Run[]>("/api/v1/runs?limit=1");
-    return runs[0]?.run_date ?? null;
+    const res = await fetchAPI<PaginatedRuns>("/api/v1/runs?limit=1");
+    return res.items[0]?.run_date ?? null;
   } catch {
     return null;
   }
 }
 
-export async function getRuns(limit = 30, portfolioKind = "top_cap"): Promise<Run[]> {
+export async function getRuns(
+  limit = 30,
+  portfolioKind = "top_cap",
+  offset = 0
+): Promise<PaginatedRuns> {
   const pk = encodeURIComponent(portfolioKind);
-  return fetchAPI<Run[]>(`/api/v1/runs?limit=${limit}&portfolio_kind=${pk}`);
+  return fetchAPI<PaginatedRuns>(
+    `/api/v1/runs?limit=${limit}&offset=${offset}&portfolio_kind=${pk}`
+  );
 }
 
 export async function getSignals(
