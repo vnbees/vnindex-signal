@@ -338,36 +338,37 @@ def calc_technical_score(sym: str, prices: List[Dict]) -> Tuple[int, Dict]:
     matched = []
     score = 0
 
+    # --- NEGATIVE: PF < 1.0, avoid ---
     if rsi14 < 40 and vol_ratio > 2:
         score = -2
-        matched.append("RSI<40 + Vol>2x (WR=43.7%)")
+        matched.append("RSI<40 + Vol>2x (PF=0.77)")
     elif bb_pos > 0.9:
         score = -1
-        matched.append("BB>0.9 near upper (WR=45.3%)")
+        matched.append("BB>0.9 near upper (PF=1.07)")
+    # --- STRONG BUY (+3): PF >= 1.9 ---
     elif consecutive_down >= 4 and rsi14 < 35:
         score = 3
-        matched.append("4 down + RSI<35 (WR=59.5%)")
+        matched.append("4 down + RSI<35 (PF=1.94, WR=59.5%)")
+    # --- GOOD BUY (+2): PF >= 1.4 ---
     elif consecutive_down >= 3 and rsi14 < 40:
         score = 2
-        matched.append("3 down + RSI<40 (WR=56.7%)")
+        matched.append("3 down + RSI<40 (PF=1.69, WR=56.7%)")
+    elif consecutive_down >= 3 and fg_net_5d > 0:
+        score = 2
+        matched.append("3 down + NN buy (PF=1.63, WR=54.5%)")
     elif vs_ma20 < -5 and fg_net_5d > 0:
         score = 2
-        matched.append("Below MA20 >5% + NN buy (WR=56.4%)")
+        matched.append("Below MA20 >5% + NN buy (PF=1.49, WR=56.4%)")
+    # --- MILD BUY (+1): PF >= 1.25, stricter conditions ---
     elif day_return < -3 and fg_net_5d > 0:
-        score = 2
-        matched.append("Drop >3% + NN buy (WR=56.0%)")
-    elif vs_ma20 < -5:
         score = 1
-        matched.append("Below MA20 >5% (WR=55.6%)")
-    elif day_return < -5:
-        score = 1
-        matched.append("Drop >5% (WR=55.1%)")
-    elif day_return < -3:
-        score = 1
-        matched.append("Drop >3% (WR=54.8%)")
+        matched.append("Drop >3% + NN buy (PF=1.41, WR=56.0%)")
     elif rsi14 < 30:
         score = 1
-        matched.append("RSI<30 oversold (WR=54.0%)")
+        matched.append("RSI<30 oversold (PF=1.36, WR=54.0%)")
+    elif consecutive_down >= 5:
+        score = 1
+        matched.append("5+ down consecutive (PF=1.25, WR=54.4%)")
 
     detail["matchedStrategies"] = matched
     return score, detail
