@@ -117,18 +117,6 @@ export function SignalTable({ signals, runDate, detailBasePath = "/signals" }: P
               >
                 T+3
               </th>
-              <th
-                className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide"
-                title="Tính từ giá mở cửa T+1"
-              >
-                T+10
-              </th>
-              <th
-                className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide"
-                title="Tính từ giá mở cửa T+1"
-              >
-                T+20
-              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-tv-border/80">
@@ -156,12 +144,6 @@ export function SignalTable({ signals, runDate, detailBasePath = "/signals" }: P
                 </td>
                 <td className="px-3 py-2.5 text-right">
                   <PnlBadge pnl={signal.pnl_d3} label="T+3" />
-                </td>
-                <td className="px-3 py-2.5 text-right">
-                  <PnlBadge pnl={signal.pnl_d10} label="T+10" />
-                </td>
-                <td className="px-3 py-2.5 text-right">
-                  <PnlBadge pnl={signal.pnl_d20} label="T+20" />
                 </td>
               </tr>
             ))}

@@ -74,7 +74,7 @@ export default async function SearchTheoMaPage({ searchParams }: Props) {
           <p className="text-sm text-tv-muted">Không có dữ liệu cho mã này.</p>
         ) : (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 text-sm">
               <div className="rounded border border-tv-border p-2">
                 <p className="text-tv-muted text-xs">Tổng tín hiệu</p>
                 <p className="font-semibold text-tv-text">{searchData.stats.total_signals}</p>
@@ -92,12 +92,6 @@ export default async function SearchTheoMaPage({ searchParams }: Props) {
                 <p className="font-semibold text-tv-text">{searchData.stats.hold_count}</p>
               </div>
               <div className="rounded border border-tv-border p-2">
-                <p className="text-tv-muted text-xs">Winrate T+20</p>
-                <p className="font-semibold text-tv-text">
-                  {searchData.stats.winrate_d20 !== null ? `${searchData.stats.winrate_d20}%` : "—"}
-                </p>
-              </div>
-              <div className="rounded border border-tv-border p-2">
                 <p className="text-tv-muted text-xs">Winrate T+3</p>
                 <p className="font-semibold text-tv-text">
                   {searchData.stats.winrate_d3 !== null ? `${searchData.stats.winrate_d3}%` : "—"}
@@ -107,12 +101,6 @@ export default async function SearchTheoMaPage({ searchParams }: Props) {
                 <p className="text-tv-muted text-xs">PnL TB T+3</p>
                 <p className={`font-semibold ${getPnlClass(searchData.stats.avg_pnl_d3)}`}>
                   {formatPnl(searchData.stats.avg_pnl_d3)}
-                </p>
-              </div>
-              <div className="rounded border border-tv-border p-2">
-                <p className="text-tv-muted text-xs">PnL TB T+10</p>
-                <p className={`font-semibold ${getPnlClass(searchData.stats.avg_pnl_d10)}`}>
-                  {formatPnl(searchData.stats.avg_pnl_d10)}
                 </p>
               </div>
             </div>
@@ -125,8 +113,6 @@ export default async function SearchTheoMaPage({ searchParams }: Props) {
                     <th className="px-3 py-2 text-left">KN</th>
                     <th className="px-3 py-2 text-right">Giá đóng</th>
                     <th className="px-3 py-2 text-right">T+3</th>
-                    <th className="px-3 py-2 text-right">T+10</th>
-                    <th className="px-3 py-2 text-right">T+20</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -143,8 +129,6 @@ export default async function SearchTheoMaPage({ searchParams }: Props) {
                       </td>
                       <td className="px-3 py-2 text-right">{formatPrice(s.price_close_signal_date)}</td>
                       <td className={`px-3 py-2 text-right ${getPnlClass(s.pnl_d3)}`}>{formatPnl(s.pnl_d3)}</td>
-                      <td className={`px-3 py-2 text-right ${getPnlClass(s.pnl_d10)}`}>{formatPnl(s.pnl_d10)}</td>
-                      <td className={`px-3 py-2 text-right ${getPnlClass(s.pnl_d20)}`}>{formatPnl(s.pnl_d20)}</td>
                     </tr>
                   ))}
                 </tbody>

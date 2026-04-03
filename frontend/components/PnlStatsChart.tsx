@@ -18,8 +18,6 @@ const AXIS = "#787b86";
 const ZERO = "#4b5563";
 
 const BAR_T3 = "#2962ff";
-const BAR_T10 = "#089981";
-const BAR_T20 = "#9b87f5";
 
 const tooltipStyles = {
   contentStyle: {
@@ -40,8 +38,6 @@ export function PnlStatsChart({ data }: Props) {
   const chartData = data.map((d) => ({
     name: d.recommendation,
     "T+3": d.avg_pnl_d3,
-    "T+10": d.avg_pnl_d10,
-    "T+20": d.avg_pnl_d20,
   }));
 
   return (
@@ -59,8 +55,6 @@ export function PnlStatsChart({ data }: Props) {
         <Legend wrapperStyle={{ paddingTop: 8, color: AXIS }} iconType="square" />
         <ReferenceLine y={0} stroke={ZERO} />
         <Bar dataKey="T+3" fill={BAR_T3} radius={[2, 2, 0, 0]} />
-        <Bar dataKey="T+10" fill={BAR_T10} radius={[2, 2, 0, 0]} />
-        <Bar dataKey="T+20" fill={BAR_T20} radius={[2, 2, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

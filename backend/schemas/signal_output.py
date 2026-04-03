@@ -20,8 +20,6 @@ class SignalListItem(BaseModel):
     market_cap_bil: Optional[Decimal]
     has_corporate_action: bool
     pnl_d3: Optional[Decimal] = None
-    pnl_d10: Optional[Decimal] = None
-    pnl_d20: Optional[Decimal] = None
     latest_pnl_pct: Optional[Decimal] = None
 
     class Config:
@@ -59,12 +57,8 @@ class SymbolStatSummary(BaseModel):
     buy_count: int
     hold_count: int
     avg_pnl_d3: Optional[Decimal] = None
-    avg_pnl_d10: Optional[Decimal] = None
-    avg_pnl_d20: Optional[Decimal] = None
     avg_latest_pnl: Optional[Decimal] = None
     winrate_d3: Optional[Decimal] = None
-    winrate_d10: Optional[Decimal] = None
-    winrate_d20: Optional[Decimal] = None
 
 
 class AllocationSuggestionItem(BaseModel):

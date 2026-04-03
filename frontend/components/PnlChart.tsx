@@ -23,8 +23,6 @@ interface PnlPoint {
 interface Props {
   symbol: string;
   pnlD3: number | null;
-  pnlD10: number | null;
-  pnlD20: number | null;
 }
 
 const tooltipStyles = {
@@ -38,13 +36,11 @@ const tooltipStyles = {
   itemStyle: { color: "#d1d4dc" },
 };
 
-export function PnlChart({ symbol, pnlD3, pnlD10, pnlD20 }: Props) {
+export function PnlChart({ symbol, pnlD3 }: Props) {
   const toNum = (v: number | null) => (v === null || v === undefined ? null : Number(v));
   const data: PnlPoint[] = [
     { day: "T+0", pnl: 0 },
     { day: "T+3", pnl: toNum(pnlD3) },
-    { day: "T+10", pnl: toNum(pnlD10) },
-    { day: "T+20", pnl: toNum(pnlD20) },
   ].filter((d) => d.pnl !== null || d.day === "T+0");
 
   if (data.length <= 1) {
@@ -55,7 +51,7 @@ export function PnlChart({ symbol, pnlD3, pnlD10, pnlD20 }: Props) {
     );
   }
 
-  const lineColor = Number(pnlD20 ?? pnlD10 ?? pnlD3 ?? 0) >= 0 ? "#089981" : "#f23645";
+  const lineColor = Number(pnlD3 ?? 0) >= 0 ? "#089981" : "#f23645";
 
   return (
     <ResponsiveContainer width="100%" height={200}>

@@ -23,8 +23,6 @@ export interface Signal {
   market_cap_bil: number | null;
   has_corporate_action: boolean;
   pnl_d3: number | null;
-  pnl_d10: number | null;
-  pnl_d20: number | null;
   latest_pnl_pct: number | null;
   detail_financial?: Record<string, unknown>;
   detail_technical?: Record<string, unknown>;
@@ -45,8 +43,6 @@ export interface PnlStat {
   recommendation: string;
   total: number;
   avg_pnl_d3: number | null;
-  avg_pnl_d10: number | null;
-  avg_pnl_d20: number | null;
   avg_latest_pnl: number | null;
 }
 
@@ -54,11 +50,7 @@ export interface AccuracyStat {
   recommendation: string;
   total: number;
   win_d3: number;
-  win_d10: number;
-  win_d20: number;
   winrate_d3: number | null;
-  winrate_d10: number | null;
-  winrate_d20: number | null;
 }
 
 export interface SymbolSearchResult {
@@ -71,12 +63,8 @@ export interface SymbolSearchResult {
     buy_count: number;
     hold_count: number;
     avg_pnl_d3: number | null;
-    avg_pnl_d10: number | null;
-    avg_pnl_d20: number | null;
     avg_latest_pnl: number | null;
     winrate_d3: number | null;
-    winrate_d10: number | null;
-    winrate_d20: number | null;
   } | null;
 }
 

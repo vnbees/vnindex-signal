@@ -45,8 +45,8 @@ async def get_pending_updates(
     signal_ids = [s.id for s in signals]
     unique_run_dates = list({s.run_date for s in signals})
 
-    # 2. Bulk-fetch T+1/T+3/T+10/T+20 for every unique run_date at once (1 query)
-    TARGETS = [1, 3, 10, 20]
+    # 2. Bulk-fetch T+1/T+3 for every unique run_date at once (1 query)
+    TARGETS = [1, 3]
     max_target = max(TARGETS)
 
     # For each unique run_date we need the first max_target trading days after it.
@@ -63,7 +63,7 @@ async def get_pending_updates(
     )
     all_trading_days = [row[0] for row in cal_result.fetchall()]
 
-    # Build lookup: run_date → [T+1, T+3, T+10, T+20]
+    # Build lookup: run_date → [T+1, T+3]
     from bisect import bisect_right
     run_date_to_targets: dict[date, list[date]] = {}
     for rd in unique_run_dates:

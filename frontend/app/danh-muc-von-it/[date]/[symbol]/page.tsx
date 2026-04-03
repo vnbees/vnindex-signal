@@ -97,8 +97,6 @@ export default async function VonItDetailPage({ params }: Props) {
             <div className="pt-2 border-t border-tv-border space-y-2">
               {[
                 { label: "T+3", pnl: signal.pnl_d3 },
-                { label: "T+10", pnl: signal.pnl_d10 },
-                { label: "T+20", pnl: signal.pnl_d20 },
               ].map(({ label, pnl }) => (
                 <div key={label} className="flex justify-between">
                   <span className="text-sm text-tv-muted">{label}</span>
@@ -114,8 +112,6 @@ export default async function VonItDetailPage({ params }: Props) {
           <PnlChart
             symbol={signal.symbol}
             pnlD3={signal.pnl_d3}
-            pnlD10={signal.pnl_d10}
-            pnlD20={signal.pnl_d20}
           />
           <p className="text-xs text-tv-muted mt-2">
             * PnL tính từ giá mở cửa T+1. Cập nhật mỗi ngày từ 15h30-16h30.

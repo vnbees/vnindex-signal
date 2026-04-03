@@ -25,7 +25,7 @@ async def export_csv(
     result = await db.execute(text(f"""
         SELECT run_date, symbol, recommendation, score_total,
                price_close_signal_date, price_open_t1, has_corporate_action,
-               pnl_d3, pnl_d10, pnl_d20, latest_pnl_pct
+               pnl_d3, latest_pnl_pct
         FROM signal_pnl_summary
         {where}
         ORDER BY run_date DESC, score_total DESC
@@ -36,7 +36,7 @@ async def export_csv(
     writer = csv.writer(output)
     writer.writerow(["run_date", "symbol", "recommendation", "score_total",
                      "price_close", "price_open_t1", "has_corp_action",
-                     "pnl_d3", "pnl_d10", "pnl_d20", "latest_pnl"])
+                     "pnl_d3", "latest_pnl"])
     for row in rows:
         writer.writerow(list(row))
 

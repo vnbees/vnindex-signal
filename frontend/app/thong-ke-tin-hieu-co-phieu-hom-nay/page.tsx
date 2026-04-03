@@ -82,9 +82,7 @@ export default async function ThongKeTinHieuPage({ searchParams }: Props) {
                   <tr className="border-b border-tv-border tv-table-head">
                     <th className="text-left py-2.5 px-3 font-medium rounded-tl-md">Khuyến nghị</th>
                     <th className="text-right py-2.5 px-3 font-medium">Số lượng</th>
-                    <th className="text-right py-2.5 px-3 font-medium">T+3</th>
-                    <th className="text-right py-2.5 px-3 font-medium">T+10</th>
-                    <th className="text-right py-2.5 px-3 font-medium rounded-tr-md">T+20</th>
+                    <th className="text-right py-2.5 px-3 font-medium rounded-tr-md">T+3</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -94,12 +92,6 @@ export default async function ThongKeTinHieuPage({ searchParams }: Props) {
                       <td className="py-2.5 px-3 text-right text-tv-muted">{stat.total}</td>
                       <td className={`py-2.5 px-3 text-right ${pnlCellClass(stat.avg_pnl_d3)}`}>
                         {stat.avg_pnl_d3 !== null ? `${stat.avg_pnl_d3 >= 0 ? "+" : ""}${stat.avg_pnl_d3}%` : "—"}
-                      </td>
-                      <td className={`py-2.5 px-3 text-right ${pnlCellClass(stat.avg_pnl_d10)}`}>
-                        {stat.avg_pnl_d10 !== null ? `${stat.avg_pnl_d10 >= 0 ? "+" : ""}${stat.avg_pnl_d10}%` : "—"}
-                      </td>
-                      <td className={`py-2.5 px-3 text-right ${pnlCellClass(stat.avg_pnl_d20)}`}>
-                        {stat.avg_pnl_d20 !== null ? `${stat.avg_pnl_d20 >= 0 ? "+" : ""}${stat.avg_pnl_d20}%` : "—"}
                       </td>
                     </tr>
                   ))}
@@ -126,9 +118,7 @@ export default async function ThongKeTinHieuPage({ searchParams }: Props) {
                 <tr className="border-b border-tv-border tv-table-head">
                   <th className="text-left py-2.5 px-3 font-medium rounded-tl-md">Khuyến nghị</th>
                   <th className="text-right py-2.5 px-3 font-medium">Tổng</th>
-                  <th className="text-right py-2.5 px-3 font-medium">Win T+3</th>
-                  <th className="text-right py-2.5 px-3 font-medium">Win T+10</th>
-                  <th className="text-right py-2.5 px-3 font-medium rounded-tr-md">Win T+20</th>
+                  <th className="text-right py-2.5 px-3 font-medium rounded-tr-md">Win T+3</th>
                 </tr>
               </thead>
               <tbody>
@@ -138,12 +128,6 @@ export default async function ThongKeTinHieuPage({ searchParams }: Props) {
                     <td className="py-2.5 px-3 text-right text-tv-muted">{stat.total}</td>
                     <td className="py-2.5 px-3 text-right text-tv-text">
                       {stat.winrate_d3 !== null ? `${stat.winrate_d3}%` : "—"}
-                    </td>
-                    <td className="py-2.5 px-3 text-right text-tv-text">
-                      {stat.winrate_d10 !== null ? `${stat.winrate_d10}%` : "—"}
-                    </td>
-                    <td className="py-2.5 px-3 text-right text-tv-text">
-                      {stat.winrate_d20 !== null ? `${stat.winrate_d20}%` : "—"}
                     </td>
                   </tr>
                 ))}

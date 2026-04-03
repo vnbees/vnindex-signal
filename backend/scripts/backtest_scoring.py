@@ -109,136 +109,33 @@ def extract_fin_metric(metrics: Dict, keys: List[str]) -> Optional[float]:
 
 
 def calc_financial_score(sym: str, fin_data, as_of: date) -> Tuple[int, Dict]:
-    detail = {
-        "quarter": None,
-        "lnstYoY": None,
-        "salesYoY": None,
-        "marginDelta": None,
-        "earningsAccel": None,
-    }
-
-    if not fin_data:
-        return 0, detail
-
-    by_q = parse_financial_rows(fin_data)
-    available = get_available_quarters(as_of)
-
-    if not available:
-        return 0, detail
-
-    latest_q, latest_y = None, None
-    for q, y in available:
-        if (q, y) in by_q:
-            latest_q, latest_y = q, y
-            break
-
-    if not latest_q:
-        return 0, detail
-
-    prev_y = latest_y - 1
-    if latest_q == 1:
-        prev_q_q, prev_q_y = 4, latest_y - 1
-    else:
-        prev_q_q, prev_q_y = latest_q - 1, latest_y
-
-    curr = by_q.get((latest_q, latest_y), {})
-    same_prev = by_q.get((latest_q, prev_y), {})
-    prev_q = by_q.get((prev_q_q, prev_q_y), {})
-
-    def get_sales(m):
-        return extract_fin_metric(m, SALES_KEYS)
-
-    def get_profit(m):
-        return extract_fin_metric(m, PROFIT_KEYS)
-
-    sales_now = get_sales(curr)
-    sales_prev = get_sales(same_prev)
-    profit_now = get_profit(curr)
-    profit_prev = get_profit(same_prev)
-
-    detail["quarter"] = f"Q{latest_q}/{latest_y}"
-
-    if profit_now is None or profit_prev is None or profit_prev == 0:
-        return 0, detail
-
-    lnst_yoy = (profit_now / abs(profit_prev) - 1) * 100 if profit_prev != 0 else 0
-    detail["lnstYoY"] = round(lnst_yoy, 2)
-
-    if sales_now and sales_prev and sales_prev != 0:
-        sales_yoy = (sales_now / abs(sales_prev) - 1) * 100
-        detail["salesYoY"] = round(sales_yoy, 2)
-    else:
-        sales_yoy = None
-
-    margin_now = safe_div(profit_now, sales_now) * 100 if sales_now else None
-    margin_prev_val = safe_div(profit_prev, sales_prev) * 100 if sales_prev else None
-    if margin_now is not None and margin_prev_val is not None:
-        margin_delta = margin_now - margin_prev_val
-        detail["marginDelta"] = round(margin_delta, 2)
-    else:
-        margin_delta = None
-
-    profit_pq = get_profit(prev_q)
-    profit_pq_yoy_base = get_profit(by_q.get((prev_q_q, prev_q_y - 1), {}))
-    earnings_accel = None
-    if profit_pq is not None and profit_pq_yoy_base is not None and profit_pq_yoy_base != 0:
-        lnst_yoy_prev_q = (profit_pq / abs(profit_pq_yoy_base) - 1) * 100
-        earnings_accel = lnst_yoy - lnst_yoy_prev_q
-        detail["earningsAccel"] = round(earnings_accel, 2)
-
-    score = 0
-    if earnings_accel is not None and earnings_accel > 10:
-        score = 2
-    elif lnst_yoy < 0 and margin_delta is not None and margin_delta < -2:
-        score = -2
-    elif lnst_yoy < 0 and margin_delta is not None and margin_delta > 0:
-        score = 2
-    elif 0 <= lnst_yoy <= 10 and margin_delta is not None and margin_delta > 0:
-        score = 1
-    elif lnst_yoy < 0:
-        score = 1
-    elif 10 < lnst_yoy <= 20:
-        score = 0
-    elif lnst_yoy > 30 and sales_yoy is not None and sales_yoy > 15:
-        score = -1
-
-    return score, detail
+    """3-day mean-reversion: financial score not used (always 0)."""
+    return 0, {"quarter": None, "lnstYoY": None, "salesYoY": None,
+               "marginDelta": None, "earningsAccel": None}
 
 
 def calc_seasonal_score(d: date) -> Tuple[int, Dict]:
-    m = d.month
-    dow = d.weekday() + 1
-
+    """Weekday effect from 3-day backtest (80k+ observations)."""
+    dow = d.weekday()  # 0=Mon...4=Fri
     score = 0
     reason = "neutral"
-
-    if m == 11 and dow == 4:
-        score = 2
-        reason = "tháng 11 + thứ 5 (P=60.4%)"
-    elif m == 11:
+    if dow == 0:
         score = 1
-        reason = "tháng 11 (P=52.8%)"
-    elif m == 2:
-        score = 1
-        reason = "tháng 2 (P=51.4%)"
-    elif dow == 4:
-        score = 1
-        reason = "thứ 5 (P=51.0%)"
-    elif m == 10:
-        score = -2
-        reason = "tháng 10 (P=42.2%, TRÁNH)"
+        reason = "Monday (WR=52.4%, best day)"
     elif dow == 2:
         score = -1
-        reason = "thứ 3 (P=44.8%, TRÁNH)"
+        reason = "Wednesday (WR=44.7%, worst day)"
     else:
-        reason = f"tháng {m}, thứ {dow} (neutral)"
-
-    return score, {"month": m, "dayOfWeek": dow, "reason": reason}
+        day_names = {1: "Tuesday", 3: "Thursday", 4: "Friday"}
+        reason = f"{day_names.get(dow, '')} (neutral)"
+    return score, {"month": d.month, "dayOfWeek": dow + 1, "reason": reason}
 
 
 def calc_technical_score(sym: str, prices_desc: List[Dict]) -> Tuple[int, Dict]:
-    """prices_desc: newest first (same convention as Fireant API)."""
-    detail = {"vsMa20": None, "rsi14": None, "bbPos": None, "ma20": None, "ma60": None}
+    """Mean-reversion strength score - main driver for 3-day strategy.
+    prices_desc: newest first (same convention as Fireant API)."""
+    detail = {"vsMa20": None, "rsi14": None, "bbPos": None, "ma20": None, "ma60": None,
+              "consecutiveDown": 0, "dayReturn": None, "volRatio": None, "matchedStrategies": []}
     if not prices_desc or len(prices_desc) < 20:
         return 0, detail
 
@@ -258,26 +155,74 @@ def calc_technical_score(sym: str, prices_desc: List[Dict]) -> Tuple[int, Dict]:
     bb_pos = safe_div(close - bb_lower, bb_upper - bb_lower, 0.5) if bb_upper != bb_lower else 0.5
     rsi14 = wilder_rsi(closes, 14)
 
-    prop_vals = [p.get("propTradingNetValue") or 0 for p in prices_desc[:60]]
-    prop_med = statistics.median(prop_vals) if prop_vals else 0
-    prop_latest = prices_desc[0].get("propTradingNetValue") or 0
+    prev_close = closes[1] if len(closes) > 1 else close
+    day_return = (close / prev_close - 1) * 100 if prev_close > 0 else 0
 
-    detail.update(
-        {
-            "vsMa20": round(vs_ma20, 2),
-            "rsi14": rsi14,
-            "bbPos": round(bb_pos, 3),
-            "ma20": round(ma20),
-            "ma60": round(ma60),
-        }
+    vols = [p.get("dealVolume") or p.get("totalVolume") or 0 for p in prices_desc[:21]]
+    vol_now = vols[0] if vols else 0
+    vol_ma20 = statistics.mean(vols[:20]) if len(vols) >= 20 else (statistics.mean(vols) if vols else 1)
+    vol_ratio = safe_div(vol_now, vol_ma20, 1.0)
+
+    consecutive_down = 0
+    for j in range(len(closes) - 1):
+        if j + 1 < len(closes) and closes[j] < closes[j + 1]:
+            consecutive_down += 1
+        else:
+            break
+
+    fg_net_5d = sum(
+        (p.get("buyForeignQuantity") or 0) - (p.get("sellForeignQuantity") or 0)
+        for p in prices_desc[:5]
     )
 
-    in_zone = -3 <= vs_ma20 <= 1
-    if in_zone and prop_latest > prop_med:
-        return 1, detail
-    if vs_ma20 > 3:
-        return -1, detail
-    return 0, detail
+    detail.update({
+        "vsMa20": round(vs_ma20, 2),
+        "rsi14": rsi14,
+        "bbPos": round(bb_pos, 3),
+        "ma20": round(ma20),
+        "ma60": round(ma60),
+        "consecutiveDown": consecutive_down,
+        "dayReturn": round(day_return, 2),
+        "volRatio": round(vol_ratio, 2),
+        "matchedStrategies": [],
+    })
+
+    matched = []
+    score = 0
+
+    if rsi14 < 40 and vol_ratio > 2:
+        score = -2
+        matched.append("RSI<40 + Vol>2x (WR=43.7%)")
+    elif bb_pos > 0.9:
+        score = -1
+        matched.append("BB>0.9 near upper (WR=45.3%)")
+    elif consecutive_down >= 4 and rsi14 < 35:
+        score = 3
+        matched.append("4 down + RSI<35 (WR=59.5%)")
+    elif consecutive_down >= 3 and rsi14 < 40:
+        score = 2
+        matched.append("3 down + RSI<40 (WR=56.7%)")
+    elif vs_ma20 < -5 and fg_net_5d > 0:
+        score = 2
+        matched.append("Below MA20 >5% + NN buy (WR=56.4%)")
+    elif day_return < -3 and fg_net_5d > 0:
+        score = 2
+        matched.append("Drop >3% + NN buy (WR=56.0%)")
+    elif vs_ma20 < -5:
+        score = 1
+        matched.append("Below MA20 >5% (WR=55.6%)")
+    elif day_return < -5:
+        score = 1
+        matched.append("Drop >5% (WR=55.1%)")
+    elif day_return < -3:
+        score = 1
+        matched.append("Drop >3% (WR=54.8%)")
+    elif rsi14 < 30:
+        score = 1
+        matched.append("RSI<30 oversold (WR=54.0%)")
+
+    detail["matchedStrategies"] = matched
+    return score, detail
 
 
 def calc_cashflow_score(sym: str, prices_desc: List[Dict]) -> Tuple[int, Dict]:
@@ -317,7 +262,7 @@ def get_recommendation(total: int) -> str:
         return "BUY"
     if total >= 0:
         return "HOLD"
-    if total >= -2:
+    if total >= -1:
         return "AVOID"
     return "SELL"
 

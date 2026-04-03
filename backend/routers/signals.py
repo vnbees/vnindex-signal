@@ -93,7 +93,7 @@ async def get_signals_for_date(
     # Get PnL data from materialized view
     pnl_result = await db.execute(
         text(
-            "SELECT signal_id, pnl_d3, pnl_d10, pnl_d20, latest_pnl_pct "
+            "SELECT signal_id, pnl_d3, latest_pnl_pct "
             "FROM signal_pnl_summary WHERE run_date = :run_date AND portfolio_kind = :portfolio_kind"
         ),
         {"run_date": run_date, "portfolio_kind": portfolio_kind},
@@ -120,8 +120,6 @@ async def get_signals_for_date(
             market_cap_bil=s.market_cap_bil,
             has_corporate_action=s.has_corporate_action or False,
             pnl_d3=pnl.pnl_d3 if pnl else None,
-            pnl_d10=pnl.pnl_d10 if pnl else None,
-            pnl_d20=pnl.pnl_d20 if pnl else None,
             latest_pnl_pct=pnl.latest_pnl_pct if pnl else None,
         ))
     return items
@@ -159,7 +157,7 @@ async def search_signals_by_symbol(
                 s.id, s.run_date, s.symbol, s.status, s.score_financial, s.score_seasonal,
                 s.score_technical, s.score_cashflow, s.score_total, s.recommendation,
                 s.signal_type, s.price_close_signal_date, s.price_open_t1, s.market_cap_bil,
-                s.has_corporate_action, sps.pnl_d3, sps.pnl_d10, sps.pnl_d20, sps.latest_pnl_pct
+                s.has_corporate_action, sps.pnl_d3, sps.latest_pnl_pct
             FROM signals s
             LEFT JOIN signal_pnl_summary sps ON sps.signal_id = s.id
             WHERE UPPER(s.symbol) = ANY(string_to_array(:symbols_csv, ','))
@@ -181,12 +179,8 @@ async def search_signals_by_symbol(
                 SUM(CASE WHEN sps.recommendation = 'BUY' THEN 1 ELSE 0 END) AS buy_count,
                 SUM(CASE WHEN sps.recommendation = 'HOLD' THEN 1 ELSE 0 END) AS hold_count,
                 ROUND(AVG(sps.pnl_d3), 2) AS avg_pnl_d3,
-                ROUND(AVG(sps.pnl_d10), 2) AS avg_pnl_d10,
-                ROUND(AVG(sps.pnl_d20), 2) AS avg_pnl_d20,
                 ROUND(AVG(sps.latest_pnl_pct), 2) AS avg_latest_pnl,
-                ROUND(100.0 * SUM(CASE WHEN sps.pnl_d3 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(sps.pnl_d3), 0), 1) AS winrate_d3,
-                ROUND(100.0 * SUM(CASE WHEN sps.pnl_d10 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(sps.pnl_d10), 0), 1) AS winrate_d10,
-                ROUND(100.0 * SUM(CASE WHEN sps.pnl_d20 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(sps.pnl_d20), 0), 1) AS winrate_d20
+                ROUND(100.0 * SUM(CASE WHEN sps.pnl_d3 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(sps.pnl_d3), 0), 1) AS winrate_d3
             FROM signal_pnl_summary sps
             WHERE UPPER(sps.symbol) = ANY(string_to_array(:symbols_csv, ','))
             {portfolio_sql}
@@ -255,8 +249,6 @@ async def suggest_allocation(
                     recommendation,
                     COUNT(*) AS total,
                     ROUND(AVG(pnl_d3), 2) AS avg_pnl_d3,
-                    ROUND(AVG(pnl_d10), 2) AS avg_pnl_d10,
-                    ROUND(AVG(pnl_d20), 2) AS avg_pnl_d20,
                     ROUND(AVG(latest_pnl_pct), 2) AS avg_latest_pnl
                 FROM signal_pnl_summary
                 WHERE run_date >= :since_date
@@ -283,9 +275,7 @@ async def suggest_allocation(
                 SELECT
                     recommendation,
                     COUNT(*) AS total,
-                    ROUND(100.0 * SUM(CASE WHEN pnl_d3 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d3), 0), 1) AS winrate_d3,
-                    ROUND(100.0 * SUM(CASE WHEN pnl_d10 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d10), 0), 1) AS winrate_d10,
-                    ROUND(100.0 * SUM(CASE WHEN pnl_d20 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d20), 0), 1) AS winrate_d20
+                    ROUND(100.0 * SUM(CASE WHEN pnl_d3 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d3), 0), 1) AS winrate_d3
                 FROM signal_pnl_summary
                 WHERE portfolio_kind = :portfolio_kind
                   {current_price_sql}
@@ -330,16 +320,12 @@ async def suggest_allocation(
                 short_pnl = first_available(
                     [
                         val_or_none(rec_stats.get("avg_pnl_d3")),
-                        val_or_none(rec_stats.get("avg_pnl_d10")),
-                        val_or_none(rec_stats.get("avg_pnl_d20")),
                         val_or_none(rec_stats.get("avg_latest_pnl")),
                     ]
                 ) or 0.0
                 short_winrate = first_available(
                     [
                         val_or_none(rec_stats.get("winrate_d3")),
-                        val_or_none(rec_stats.get("winrate_d10")),
-                        val_or_none(rec_stats.get("winrate_d20")),
                     ]
                 ) or 0.0
                 weighted_pnl += short_pnl * rec_total
@@ -375,7 +361,7 @@ async def suggest_allocation(
         bucket_by_rec = await load_recommendation_bucket(price_min, price_max)
         hold_bucket = bucket_by_rec.get("HOLD")
         if hold_bucket:
-            for key in ("avg_pnl_d3", "avg_pnl_d10", "avg_pnl_d20", "avg_latest_pnl"):
+            for key in ("avg_pnl_d3", "avg_latest_pnl"):
                 value = hold_bucket.get(key)
                 if value is not None:
                     hold_perf_from_bucket = float(value)
@@ -392,16 +378,10 @@ async def suggest_allocation(
                 s.recommendation,
                 s.price_close_signal_date,
                 s.score_total,
-                ps.avg_pnl_d10 AS avg_pnl_d10,
                 ps.avg_pnl_d3 AS avg_pnl_d3,
-                ps.avg_pnl_d20 AS avg_pnl_d20,
                 ps.avg_latest_pnl AS avg_latest_pnl,
                 ps.winrate_d3 AS winrate_d3,
-                ps.winrate_d10 AS winrate_d10,
-                ps.winrate_d20 AS winrate_d20,
-                ps.samples_d3 AS samples_d3,
-                ps.samples_d10 AS samples_d10,
-                ps.samples_d20 AS samples_d20
+                ps.samples_d3 AS samples_d3
             FROM signals s
             JOIN analysis_runs ar ON ar.id = s.run_id
             LEFT JOIN (
@@ -409,15 +389,9 @@ async def suggest_allocation(
                     symbol,
                     portfolio_kind,
                     COUNT(pnl_d3) AS samples_d3,
-                    COUNT(pnl_d10) AS samples_d10,
-                    COUNT(pnl_d20) AS samples_d20,
-                    ROUND(AVG(pnl_d10), 2) AS avg_pnl_d10,
                     ROUND(AVG(pnl_d3), 2) AS avg_pnl_d3,
-                    ROUND(AVG(pnl_d20), 2) AS avg_pnl_d20,
                     ROUND(AVG(latest_pnl_pct), 2) AS avg_latest_pnl,
-                    ROUND(100.0 * SUM(CASE WHEN pnl_d3 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d3), 0), 1) AS winrate_d3,
-                    ROUND(100.0 * SUM(CASE WHEN pnl_d10 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d10), 0), 1) AS winrate_d10,
-                    ROUND(100.0 * SUM(CASE WHEN pnl_d20 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d20), 0), 1) AS winrate_d20
+                    ROUND(100.0 * SUM(CASE WHEN pnl_d3 > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(pnl_d3), 0), 1) AS winrate_d3
                 FROM signal_pnl_summary
                 WHERE run_date >= :since_date
                 GROUP BY symbol, portfolio_kind
@@ -428,7 +402,7 @@ async def suggest_allocation(
               {candidate_price_sql}
               AND (
                 s.recommendation IN ('BUY_STRONG', 'BUY')
-                OR (s.recommendation = 'HOLD' AND COALESCE(:hold_bucket_perf, ps.avg_pnl_d3, ps.avg_pnl_d10, ps.avg_pnl_d20, -999) >= 1.0)
+                OR (s.recommendation = 'HOLD' AND COALESCE(:hold_bucket_perf, ps.avg_pnl_d3, -999) >= 1.0)
               )
             ORDER BY s.run_date DESC, s.score_total DESC
             LIMIT :candidate_limit
@@ -473,9 +447,7 @@ async def suggest_allocation(
     scored = []
     for row in rows:
         symbol_samples_d3 = int(row.get("samples_d3") or 0)
-        symbol_samples_d10 = int(row.get("samples_d10") or 0)
-        symbol_samples_d20 = int(row.get("samples_d20") or 0)
-        symbol_total_samples = symbol_samples_d3 + symbol_samples_d10 + symbol_samples_d20
+        symbol_total_samples = symbol_samples_d3
 
         source_is_bucket = False
         stats_source = row
@@ -487,16 +459,12 @@ async def suggest_allocation(
                 stats_source = rec_bucket
 
         avg_pnl_d3 = val_or_none(stats_source.get("avg_pnl_d3"))
-        avg_pnl_d10 = val_or_none(stats_source.get("avg_pnl_d10"))
-        avg_pnl_d20 = val_or_none(stats_source.get("avg_pnl_d20"))
         avg_latest = val_or_none(stats_source.get("avg_latest_pnl"))
         winrate_d3 = val_or_none(stats_source.get("winrate_d3"))
-        winrate_d10 = val_or_none(stats_source.get("winrate_d10"))
-        winrate_d20 = val_or_none(stats_source.get("winrate_d20"))
         total_samples = int(stats_source.get("total") or 0) if source_is_bucket else symbol_total_samples
 
-        short_term_pnl = first_available([avg_pnl_d3, avg_pnl_d10, avg_pnl_d20, avg_latest])
-        short_term_winrate = first_available([winrate_d3, winrate_d10, winrate_d20])
+        short_term_pnl = first_available([avg_pnl_d3, avg_latest])
+        short_term_winrate = first_available([winrate_d3])
 
         # Confidence grows with real observed samples; no history => strong penalty.
         confidence = clamp01(total_samples / 30.0)
@@ -514,11 +482,7 @@ async def suggest_allocation(
                 **row,
                 "final_score": final_score,
                 "metric_avg_pnl_d3": avg_pnl_d3,
-                "metric_avg_pnl_d10": avg_pnl_d10,
-                "metric_avg_pnl_d20": avg_pnl_d20,
                 "metric_winrate_d3": winrate_d3,
-                "metric_winrate_d10": winrate_d10,
-                "metric_winrate_d20": winrate_d20,
                 "used_price_bucket_metrics": source_is_bucket,
             }
         )
@@ -553,11 +517,7 @@ async def suggest_allocation(
         amount_to_buy = (price * qty_lot).quantize(Decimal("0.01"))
         remaining -= amount_to_buy
         avg_pnl_d3 = val_or_none(item.get("metric_avg_pnl_d3"))
-        avg_pnl_d10 = val_or_none(item.get("metric_avg_pnl_d10"))
-        avg_pnl_d20 = val_or_none(item.get("metric_avg_pnl_d20"))
         winrate_d3 = val_or_none(item.get("metric_winrate_d3"))
-        winrate_d10 = val_or_none(item.get("metric_winrate_d10"))
-        winrate_d20 = val_or_none(item.get("metric_winrate_d20"))
         rec = item["recommendation"]
 
         rec_label_map = {
@@ -576,30 +536,17 @@ async def suggest_allocation(
             else:
                 reasons.append("Điểm ưu tiên dựa trên thống kê theo loại tín hiệu trong khoảng giá bạn đã chọn.")
 
-        if (avg_pnl_d3 is not None and avg_pnl_d3 > 0) or (avg_pnl_d10 is not None and avg_pnl_d10 > 0):
-            reasons.append(
-                f"Hiệu suất ngắn hạn tích cực (T+3: {(avg_pnl_d3 if avg_pnl_d3 is not None else 0):.2f}%, T+10: {(avg_pnl_d10 if avg_pnl_d10 is not None else 0):.2f}%)."
-            )
-        elif (avg_pnl_d3 is not None and avg_pnl_d10 is not None and avg_pnl_d3 < 0 and avg_pnl_d10 < 0):
-            reasons.append(
-                f"Hiệu suất ngắn hạn còn yếu (T+3: {avg_pnl_d3:.2f}%, T+10: {avg_pnl_d10:.2f}%), hệ thống hạ tỷ trọng."
-            )
+        if avg_pnl_d3 is not None and avg_pnl_d3 > 0:
+            reasons.append(f"Hiệu suất T+3 tích cực ({avg_pnl_d3:.2f}%).")
+        elif avg_pnl_d3 is not None and avg_pnl_d3 < 0:
+            reasons.append(f"Hiệu suất T+3 còn yếu ({avg_pnl_d3:.2f}%), hệ thống hạ tỷ trọng.")
         else:
-            reasons.append(
-                "Dữ liệu ngắn hạn T+3/T+10 còn hạn chế, hệ thống kết hợp tín hiệu hiện tại với bộ lọc rủi ro."
-            )
+            reasons.append("Dữ liệu T+3 còn hạn chế, hệ thống kết hợp tín hiệu hiện tại với bộ lọc rủi ro.")
 
-        if (winrate_d3 is not None and winrate_d3 > 0) or (winrate_d10 is not None and winrate_d10 > 0):
-            reasons.append(
-                f"Winrate ngắn hạn (T+3: {(winrate_d3 if winrate_d3 is not None else 0):.1f}%, T+10: {(winrate_d10 if winrate_d10 is not None else 0):.1f}%)."
-            )
-        elif winrate_d20 is not None and winrate_d20 > 0:
-            reasons.append(f"Winrate T+20 tham khảo khoảng {winrate_d20:.1f}% khi dữ liệu ngắn hạn chưa đủ.")
+        if winrate_d3 is not None and winrate_d3 > 0:
+            reasons.append(f"Winrate T+3: {winrate_d3:.1f}%.")
         else:
-            reasons.append("Chưa đủ dữ liệu winrate ngắn hạn đáng tin cậy cho mã này.")
-
-        if avg_pnl_d20 is not None and avg_pnl_d20 > 0:
-            reasons.append(f"Tham khảo thêm: T+20 trung bình dương ({avg_pnl_d20:.2f}%).")
+            reasons.append("Chưa đủ dữ liệu winrate T+3 đáng tin cậy cho mã này.")
 
         if item["recommendation"] == "HOLD":
             reasons.append("Mã HOLD vẫn được chọn vì điểm hiệu suất lịch sử đủ cao theo ngưỡng hệ thống.")
@@ -755,7 +702,7 @@ async def get_signal_detail(
 
     pnl_result = await db.execute(
         text(
-            "SELECT pnl_d3, pnl_d10, pnl_d20, latest_pnl_pct FROM signal_pnl_summary "
+            "SELECT pnl_d3, latest_pnl_pct FROM signal_pnl_summary "
             "WHERE signal_id = :signal_id"
         ),
         {"signal_id": signal.id},
@@ -783,7 +730,5 @@ async def get_signal_detail(
         detail_cashflow=signal.detail_cashflow,
         detail_seasonal=signal.detail_seasonal,
         pnl_d3=pnl.pnl_d3 if pnl else None,
-        pnl_d10=pnl.pnl_d10 if pnl else None,
-        pnl_d20=pnl.pnl_d20 if pnl else None,
         latest_pnl_pct=pnl.latest_pnl_pct if pnl else None,
     )
