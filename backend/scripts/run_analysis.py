@@ -253,7 +253,7 @@ def extract_fin_metric(metrics: Dict, keys: List[str]) -> Optional[float]:
 SALES_KEYS = ["Sales", "NetRevenue"]
 PROFIT_KEYS = ["NetProfit", "NetProfit_PCSH"]
 
-def calc_financial_score(sym: str, fin_data) -> Tuple[int, Dict]:
+def calc_financial_score(sym: str, fin_data, as_of: date) -> Tuple[int, Dict]:
     """Tính điểm tài chính và detail. fin_data là dict từ Fireant financial-reports."""
     detail = {"quarter": None, "lnstYoY": None, "salesYoY": None,
               "marginDelta": None, "earningsAccel": None}
@@ -263,7 +263,7 @@ def calc_financial_score(sym: str, fin_data) -> Tuple[int, Dict]:
 
     # Parse theo quý
     by_q = parse_financial_rows(fin_data)
-    available = get_available_quarters(TODAY)
+    available = get_available_quarters(as_of)
 
     if not available:
         return 0, detail
@@ -679,7 +679,7 @@ async def main():
         prices = price_data.get(sym, [])
         fins = fin_data.get(sym, [])
 
-        score_tc, detail_tc_fin = calc_financial_score(sym, fins)
+        score_tc, detail_tc_fin = calc_financial_score(sym, fins, TODAY)
         score_kt, detail_kt = calc_technical_score(sym, prices)
         score_dt, detail_dt = calc_cashflow_score(sym, prices)
 

@@ -32,23 +32,67 @@ async def get_pending_updates(
     limit: int = 10000,
     db: AsyncSession = Depends(get_db)
 ):
-    """Return signals that need price tracking data."""
+    """Return signals that need price tracking data. Bulk-query version (no N+1)."""
+    # 1. Fetch all active signals (1 query)
     result = await db.execute(
         select(Signal).where(Signal.status == "active").order_by(Signal.run_date.desc()).limit(limit)
     )
     signals = result.scalars().all()
+    if not signals:
+        return []
 
+    today = date.today()
+    signal_ids = [s.id for s in signals]
+    unique_run_dates = list({s.run_date for s in signals})
+
+    # 2. Bulk-fetch T+1/T+3/T+10/T+20 for every unique run_date at once (1 query)
+    TARGETS = [1, 3, 10, 20]
+    max_target = max(TARGETS)
+
+    # For each unique run_date we need the first max_target trading days after it.
+    # Fetch ALL trading days after min(run_dates) up to today in one shot.
+    min_run_date = min(unique_run_dates)
+    cal_result = await db.execute(
+        select(TradingCalendar.trade_date)
+        .where(
+            TradingCalendar.trade_date > min_run_date,
+            TradingCalendar.trade_date <= today,
+            TradingCalendar.is_trading == True,
+        )
+        .order_by(TradingCalendar.trade_date)
+    )
+    all_trading_days = [row[0] for row in cal_result.fetchall()]
+
+    # Build lookup: run_date → [T+1, T+3, T+10, T+20]
+    from bisect import bisect_right
+    run_date_to_targets: dict[date, list[date]] = {}
+    for rd in unique_run_dates:
+        # find index of first trading day > rd
+        idx = bisect_right(all_trading_days, rd)
+        remaining = all_trading_days[idx:]
+        dates_for_rd = []
+        for t in TARGETS:
+            # t is 1-indexed
+            pos = t - 1
+            if pos < len(remaining):
+                dates_for_rd.append(remaining[pos])
+        run_date_to_targets[rd] = dates_for_rd
+
+    # 3. Bulk-fetch all existing price_tracking rows for those signals (1 query)
+    pt_result = await db.execute(
+        select(PriceTracking.signal_id, PriceTracking.track_date)
+        .where(PriceTracking.signal_id.in_(signal_ids))
+    )
+    existing: dict[int, set[date]] = {}
+    for sig_id, td in pt_result.fetchall():
+        existing.setdefault(sig_id, set()).add(td)
+
+    # 4. Build pending list (pure Python, no more DB queries)
     pending = []
     for signal in signals:
-        track_dates = await get_trading_days_needed(db, signal.run_date, 20)
-
-        # Check which dates already have data
-        existing_result = await db.execute(
-            select(PriceTracking.track_date).where(PriceTracking.signal_id == signal.id)
-        )
-        existing_dates = {row[0] for row in existing_result.fetchall()}
-
-        needed = [d for d in track_dates if d not in existing_dates and d <= date.today()]
+        track_dates = run_date_to_targets.get(signal.run_date, [])
+        already_done = existing.get(signal.id, set())
+        needed = [d for d in track_dates if d not in already_done]
         if needed:
             pending.append(PendingPriceUpdate(
                 signal_id=signal.id,

@@ -15,7 +15,7 @@ import os
 import sys
 from datetime import date
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import httpx
 
@@ -139,12 +139,34 @@ async def post_low_cap_signals(
         return False
 
 
+def _parse_item_run_date(item: dict) -> Optional[date]:
+    rd = item.get("run_date")
+    if rd is None:
+        return None
+    if isinstance(rd, date):
+        return rd
+    if isinstance(rd, str):
+        try:
+            return date.fromisoformat(rd[:10])
+        except ValueError:
+            return None
+    return None
+
+
 async def update_price_tracking_for_date(
-    price_data: Dict[str, List], as_of: date, website_url: str, api_key: str
+    price_data: Dict[str, List],
+    as_of: date,
+    website_url: str,
+    api_key: str,
+    run_dates_filter: Optional[Set[date]] = None,
 ) -> None:
+    """run_dates_filter: nếu có, chỉ xử lý pending có run_date thuộc tập này (vd. 10 ngày giao dịch đầu năm)."""
     print("\n💹 Update price tracking (pending)...")
+    if run_dates_filter is not None:
+        print(f"   Lọc run_date: {len(run_dates_filter)} ngày tín hiệu")
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=60) as client:
+    # Large batches (nhiều symbol × nhiều ngày) có thể vượt 60s trên PROD
+    async with httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0)) as client:
         r = await client.get(
             f"{website_url}/api/v1/price-updates/pending?limit=10000", headers=headers
         )
@@ -155,7 +177,20 @@ async def update_price_tracking_for_date(
         if not pending:
             print("✅ Không có price tracking cần update")
             return
-        print(f"   {len(pending)} pending")
+        raw_n = len(pending)
+        if run_dates_filter is not None:
+            pending = [
+                p
+                for p in pending
+                if (rd := _parse_item_run_date(p)) is not None and rd in run_dates_filter
+            ]
+            print(f"   {raw_n} pending → {len(pending)} sau lọc run_date")
+        else:
+            print(f"   {len(pending)} pending")
+
+        if not pending:
+            print("✅ Không có price tracking cần update (sau lọc)")
+            return
 
         missing = {item.get("symbol") for item in pending if item.get("symbol")}
         missing = {s for s in missing if s and s not in price_data}
