@@ -61,7 +61,18 @@ export default async function VonItListPage({
                     {run.run_date}
                   </span>
                 </div>
-                <div className="flex items-center gap-4 text-sm text-tv-muted">
+                <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-sm text-tv-muted">
+                  <span className="whitespace-nowrap">
+                    <span className="text-tv-accent font-medium">
+                      {run.buy_strong_count ?? 0}
+                    </span>{" "}
+                    mua mạnh
+                    <span className="mx-1.5 text-tv-border">·</span>
+                    <span className="text-emerald-500/90 font-medium">
+                      {run.buy_count ?? 0}
+                    </span>{" "}
+                    mua
+                  </span>
                   <span>{run.signal_count} mã</span>
                   <span>Giữ {run.hold_days} ngày</span>
                   <span className="text-tv-accent">→</span>

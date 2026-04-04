@@ -38,6 +38,8 @@ class RunListItem(BaseModel):
     top_n: int
     hold_days: int
     signal_count: int = 0
+    buy_strong_count: int = 0
+    buy_count: int = 0
 
     class Config:
         from_attributes = True

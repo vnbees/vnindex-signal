@@ -50,19 +50,41 @@ async def list_runs(
         .offset(offset)
     )
     runs = result.scalars().all()
+    run_ids = [r.id for r in runs]
+    buy_map: dict[int, tuple[int, int]] = {}
+    if run_ids:
+        agg = await db.execute(
+            select(
+                Signal.run_id,
+                func.count()
+                .filter(Signal.recommendation == "BUY_STRONG")
+                .label("buy_strong_count"),
+                func.count()
+                .filter(Signal.recommendation == "BUY")
+                .label("buy_count"),
+            )
+            .where(Signal.run_id.in_(run_ids))
+            .group_by(Signal.run_id)
+        )
+        for row in agg:
+            buy_map[row.run_id] = (row.buy_strong_count or 0, row.buy_count or 0)
+
     items = []
     for run in runs:
         count_result = await db.execute(
             select(func.count()).where(Signal.run_id == run.id)
         )
         count = count_result.scalar_one()
+        bs, b = buy_map.get(run.id, (0, 0))
         items.append(RunListItem(
             id=run.id,
             run_date=run.run_date,
             portfolio_kind=run.portfolio_kind,
             top_n=run.top_n,
             hold_days=run.hold_days,
-            signal_count=count
+            signal_count=count,
+            buy_strong_count=bs,
+            buy_count=b,
         ))
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 

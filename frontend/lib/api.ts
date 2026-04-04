@@ -37,6 +37,8 @@ export interface Run {
   top_n: number;
   hold_days: number;
   signal_count: number;
+  buy_strong_count?: number;
+  buy_count?: number;
 }
 
 export interface PaginatedRuns {
