@@ -7,7 +7,6 @@ from sqlalchemy import select
 from database import get_db
 from models.feedback import Feedback
 from schemas.feedback import FeedbackCreate, FeedbackOut
-from services.auth import verify_api_key
 
 router = APIRouter(tags=["feedback"])
 
@@ -45,7 +44,6 @@ async def list_feedback(
     limit: int = 200,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
-    _api_key_id: int = Depends(verify_api_key),
 ):
     if limit < 1 or limit > 500:
         raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
@@ -60,3 +58,9 @@ async def list_feedback(
     )
     rows = result.scalars().all()
     return [FeedbackOut.model_validate(r) for r in rows]
+
+
+# Mount cùng cụm admin — tránh bản deploy cũ chỉ include feedback mà thiếu router riêng signal_entries.
+from routers.signal_entries import router as signal_entries_admin_router
+
+router.include_router(signal_entries_admin_router)

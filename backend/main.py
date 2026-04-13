@@ -51,9 +51,32 @@ async def ensure_feedback_table_exists():
     CREATE INDEX IF NOT EXISTS ix_feedback_created_at
     ON feedback (created_at);
     """
+    create_signal_entries_sql = """
+    CREATE TABLE IF NOT EXISTS signal_entries (
+        id SERIAL PRIMARY KEY,
+        symbol VARCHAR(16) NULL,
+        reference_date DATE NULL,
+        title VARCHAR(200) NULL,
+        notes TEXT NULL,
+        payload JSONB NULL,
+        data_extracted BOOLEAN NOT NULL DEFAULT FALSE,
+        deleted_at TIMESTAMPTZ NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    """
+    signal_indexes = [
+        "CREATE INDEX IF NOT EXISTS ix_signal_entries_symbol ON signal_entries (symbol);",
+        "CREATE INDEX IF NOT EXISTS ix_signal_entries_deleted_at ON signal_entries (deleted_at);",
+        "CREATE INDEX IF NOT EXISTS ix_signal_entries_reference_date ON signal_entries (reference_date);",
+        "CREATE INDEX IF NOT EXISTS ix_signal_entries_data_extracted ON signal_entries (data_extracted);",
+    ]
     async with AsyncSessionLocal() as session:
         await session.execute(text(create_feedback_sql))
         await session.execute(text(create_index_sql))
+        await session.execute(text(create_signal_entries_sql))
+        for stmt in signal_indexes:
+            await session.execute(text(stmt))
         await session.commit()
 
 @app.get("/")
