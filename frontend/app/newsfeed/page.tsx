@@ -5,7 +5,7 @@ import { formatDate, formatPrice } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Newfeeds tín hiệu mua",
+  title: "Newsfeed tín hiệu mua",
   description: "Danh sách mã cổ phiếu được khuyến nghị mua theo từng ngày phân tích.",
 };
 
@@ -46,20 +46,20 @@ function BuySignalsBlock({ item }: { item: NewfeedItem }) {
   );
 }
 
-export default async function NewfeedsPage() {
+export default async function NewsfeedPage() {
   let items: NewfeedItem[] = [];
   let error = "";
   try {
     const res = await getNewfeeds(50, 0);
     items = res.items;
   } catch {
-    error = "Không tải được newfeeds. Vui lòng kiểm tra backend.";
+    error = "Không tải được newsfeed. Vui lòng kiểm tra backend.";
   }
 
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-xl font-semibold text-tv-text tracking-tight">Newfeeds tín hiệu mua</h1>
+        <h1 className="text-xl font-semibold text-tv-text tracking-tight">Newsfeed tín hiệu mua</h1>
         <p className="mt-1 text-sm text-tv-muted">
           Hiển thị mã mua theo ngày phân tích, đồng thời lưu và xem lại toàn bộ nội dung gốc.
         </p>
@@ -69,7 +69,7 @@ export default async function NewfeedsPage() {
         <p className="rounded border border-tv-border bg-tv-panel p-3 text-sm text-tv-down">{error}</p>
       ) : items.length === 0 ? (
         <p className="rounded border border-tv-border bg-tv-panel p-3 text-sm text-tv-muted">
-          Chưa có dữ liệu newfeeds.
+          Chưa có dữ liệu newsfeed.
         </p>
       ) : (
         <div className="space-y-3">
