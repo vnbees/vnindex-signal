@@ -231,6 +231,52 @@ export interface FeedbackItem {
   created_at: string;
 }
 
+/** Tín hiệu quản lý (bảng signal_entries), khác `Signal` phân tích theo ngày. */
+export interface SignalEntry {
+  id: number;
+  symbol: string | null;
+  reference_date: string | null;
+  title: string | null;
+  notes: string | null;
+  payload: Record<string, unknown> | null;
+  data_extracted: boolean;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SignalEntryListResponse {
+  items: SignalEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface NewfeedBuySignal {
+  rank: number | null;
+  symbol: string;
+  recommendation: string | null;
+  sector: string | null;
+  price: number | null;
+}
+
+export interface NewfeedItem {
+  id: number;
+  reference_date: string | null;
+  created_at: string;
+  title: string | null;
+  raw_text: string;
+  raw_text_preview: string;
+  buy_signals: NewfeedBuySignal[];
+}
+
+export interface NewfeedListResponse {
+  items: NewfeedItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export async function submitFeedback(payload: FeedbackSubmit): Promise<FeedbackItem> {
   const res = await fetch("/api/feedback", {
     method: "POST",
@@ -256,4 +302,8 @@ export async function submitFeedback(payload: FeedbackSubmit): Promise<FeedbackI
     throw new Error(detail);
   }
   return res.json() as Promise<FeedbackItem>;
+}
+
+export async function getNewfeeds(limit = 20, offset = 0): Promise<NewfeedListResponse> {
+  return fetchAPI<NewfeedListResponse>(`/api/v1/newfeeds?limit=${limit}&offset=${offset}`);
 }
