@@ -105,6 +105,12 @@ class BuySignalIn(BaseModel):
     recommendation: Optional[str] = None
     sector: Optional[str] = None
     price: Optional[float] = None
+    current_price: Optional[float] = None
+    pnl_3d_pct: Optional[float] = None
+    pnl_5d_pct: Optional[float] = None
+    pnl_10d_pct: Optional[float] = None
+    price_as_of: Optional[date] = None
+    pnl_basis_trade_dates: Optional[dict[str, Optional[date]]] = None
 
     @field_validator("symbol")
     @classmethod

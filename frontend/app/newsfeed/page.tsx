@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getNewfeeds, type NewfeedItem } from "@/lib/api";
+import { refreshNewfeedsPrices, type NewfeedItem } from "@/lib/api";
 import { formatDate, formatPrice } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -27,21 +27,38 @@ function BuySignalsBlock({ item }: { item: NewfeedItem }) {
   }
   return (
     <div className="flex flex-wrap gap-2">
-      {item.buy_signals.map((sig, idx) => (
-        <div
-          key={`${item.id}-${sig.symbol}-${idx}`}
-          className="rounded-md border border-tv-border bg-tv-panel px-2.5 py-1.5 text-sm"
-          title={sig.sector ?? undefined}
-        >
-          <span className="font-semibold text-tv-text">{sig.symbol}</span>
-          {typeof sig.rank === "number" ? (
-            <span className="ml-1 text-xs text-tv-muted">#{sig.rank}</span>
-          ) : null}
-          {sig.price !== null ? (
-            <span className="ml-2 text-xs text-tv-muted">{formatPrice(sig.price)} đ</span>
-          ) : null}
-        </div>
-      ))}
+      {item.buy_signals.map((sig, idx) => {
+        const pnlClass = (value?: number | null) =>
+          value == null ? "text-tv-muted" : value >= 0 ? "text-tv-up" : "text-tv-down";
+        const fmtPct = (value?: number | null) =>
+          value == null ? "--" : `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+
+        return (
+          <div
+            key={`${item.id}-${sig.symbol}-${idx}`}
+            className="rounded-md border border-tv-border bg-tv-panel px-2.5 py-1.5 text-sm"
+            title={sig.sector ?? undefined}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-tv-text">{sig.symbol}</span>
+              {typeof sig.rank === "number" ? (
+                <span className="text-xs text-tv-muted">#{sig.rank}</span>
+              ) : null}
+              {sig.price != null ? (
+                <span className="text-xs text-tv-muted">Giá vào: {formatPrice(sig.price)} đ</span>
+              ) : null}
+              {sig.current_price != null ? (
+                <span className="text-xs text-tv-text">Hiện tại: {formatPrice(sig.current_price)} đ</span>
+              ) : null}
+            </div>
+            <div className="mt-1 flex flex-wrap gap-3 text-xs">
+              <span className={pnlClass(sig.pnl_3d_pct)}>PnL 3 phiên: {fmtPct(sig.pnl_3d_pct)}</span>
+              <span className={pnlClass(sig.pnl_5d_pct)}>PnL 5 phiên: {fmtPct(sig.pnl_5d_pct)}</span>
+              <span className={pnlClass(sig.pnl_10d_pct)}>PnL 10 phiên: {fmtPct(sig.pnl_10d_pct)}</span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -50,10 +67,10 @@ export default async function NewsfeedPage() {
   let items: NewfeedItem[] = [];
   let error = "";
   try {
-    const res = await getNewfeeds(50, 0);
+    const res = await refreshNewfeedsPrices(50, 0);
     items = res.items;
   } catch {
-    error = "Không tải được newsfeed. Vui lòng kiểm tra backend.";
+    error = "Không tải hoặc refresh được newsfeed. Vui lòng kiểm tra backend.";
   }
 
   return (

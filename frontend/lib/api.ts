@@ -258,6 +258,12 @@ export interface NewfeedBuySignal {
   recommendation: string | null;
   sector: string | null;
   price: number | null;
+  current_price?: number | null;
+  pnl_3d_pct?: number | null;
+  pnl_5d_pct?: number | null;
+  pnl_10d_pct?: number | null;
+  price_as_of?: string | null;
+  pnl_basis_trade_dates?: Record<string, string | null> | null;
 }
 
 export interface NewfeedItem {
@@ -306,4 +312,8 @@ export async function submitFeedback(payload: FeedbackSubmit): Promise<FeedbackI
 
 export async function getNewfeeds(limit = 20, offset = 0): Promise<NewfeedListResponse> {
   return fetchAPI<NewfeedListResponse>(`/api/v1/newfeeds?limit=${limit}&offset=${offset}`);
+}
+
+export async function refreshNewfeedsPrices(limit = 20, offset = 0): Promise<NewfeedListResponse> {
+  return fetchAPI<NewfeedListResponse>(`/api/v1/newfeeds/refresh-prices?limit=${limit}&offset=${offset}`);
 }
