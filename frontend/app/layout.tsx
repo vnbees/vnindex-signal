@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import { IBM_Plex_Sans } from "next/font/google";
-import { AppNav } from "@/components/AppNav";
+import Image from "next/image";
+import Link from "next/link";
 import { FeedbackWidget } from "@/components/FeedbackWidget";
 import { SiteFooter } from "@/components/SiteFooter";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -91,7 +92,21 @@ export default function RootLayout({
       <body className={`${ibmSans.className} min-h-screen flex flex-col bg-tv-bg antialiased tabular-nums`}>
         <header className="border-b border-tv-border bg-tv-bg px-4 py-3">
           <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-            <AppNav />
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 font-semibold text-tv-text tracking-tight"
+              aria-label="ViiStock"
+            >
+              <Image
+                src="/logo/bmBDo.jpg"
+                alt="ViiStock logo"
+                width={1168}
+                height={784}
+                className="h-10 w-auto rounded-md object-contain"
+                priority
+              />
+              <span>ViiStock</span>
+            </Link>
             <ThemeToggle />
           </div>
         </header>
