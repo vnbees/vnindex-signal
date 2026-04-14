@@ -267,7 +267,7 @@ async def refresh_newfeeds_prices(
                 bars = await fetch_historical_quotes(symbol, fetch_from, fetch_to, token)
                 if bars:
                     await upsert_quotes(db, symbol, bars)
-            except httpx.HTTPError:
+            except (httpx.HTTPError, Exception):
                 # Keep endpoint responsive even when a symbol fails to fetch.
                 continue
 

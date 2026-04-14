@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { refreshNewfeedsPrices, type NewfeedItem } from "@/lib/api";
+import { getNewfeeds, type NewfeedItem } from "@/lib/api";
 import { formatDate, formatPrice } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -67,10 +67,10 @@ export default async function NewsfeedPage() {
   let items: NewfeedItem[] = [];
   let error = "";
   try {
-    const res = await refreshNewfeedsPrices(50, 0);
+    const res = await getNewfeeds(50, 0);
     items = res.items;
   } catch {
-    error = "Không tải hoặc refresh được newsfeed. Vui lòng kiểm tra backend.";
+    error = "Không tải được newsfeed. Vui lòng kiểm tra backend.";
   }
 
   return (

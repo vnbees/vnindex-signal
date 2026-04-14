@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -40,6 +40,33 @@ def _to_decimal(value: Any) -> Decimal | None:
         return Decimal(str(value))
     except Exception:
         return None
+
+
+def _price_to_vnd(value: Any) -> Decimal | None:
+    """
+    Fireant historical quote prices are in 'thousand VND' units.
+    Convert to VND to match newsfeed entry prices.
+    """
+    d = _to_decimal(value)
+    if d is None:
+        return None
+    return d * Decimal("1000")
+
+
+def _to_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        txt = value.strip()
+        if not txt:
+            return None
+        try:
+            return datetime.fromisoformat(txt.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
 
 
 def _default_fireant_token() -> str | None:
@@ -96,6 +123,16 @@ async def upsert_quotes(
     symbol: str,
     quotes: list[dict[str, Any]],
 ) -> None:
+    await db.execute(
+        text(
+            """
+            INSERT INTO fireant_symbol (symbol, universe_131)
+            VALUES (:symbol, FALSE)
+            ON CONFLICT (symbol) DO NOTHING
+            """
+        ),
+        {"symbol": symbol},
+    )
     stmt = text(
         """
         INSERT INTO fireant_quote_daily (symbol, trade_date, price_close, source_ts)
@@ -111,16 +148,20 @@ async def upsert_quotes(
         ds = (bar.get("date") or "")[:10]
         if not ds:
             continue
-        price_close = _to_decimal(bar.get("priceClose"))
+        try:
+            trade_date = date.fromisoformat(ds)
+        except ValueError:
+            continue
+        price_close = _price_to_vnd(bar.get("priceClose"))
         if price_close is None:
             continue
         await db.execute(
             stmt,
             {
                 "symbol": symbol,
-                "trade_date": ds,
+                "trade_date": trade_date,
                 "price_close": price_close,
-                "source_ts": bar.get("date"),
+                "source_ts": _to_datetime(bar.get("date")),
             },
         )
 
