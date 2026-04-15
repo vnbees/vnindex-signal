@@ -126,9 +126,72 @@ async def fetch_symbol_posts(
     page: int = 1,
     page_size: int = 50,
 ) -> list[dict[str, Any]]:
-    """GET /symbols/{sym}/posts — shape phụ thuộc API; trả list item dict."""
+    """GET /symbols/{sym}/posts, ưu tiên tab 'Bài viết' và loại trừ 'Cộng đồng'."""
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    params = {"page": page, "pageSize": page_size}
+    # Thử hint cho phía API chọn tab bài viết; nếu API bỏ qua thì vẫn có filter phía client.
+    params = {
+        "page": page,
+        "pageSize": page_size,
+        "tab": "articles",
+        "type": "article",
+    }
+
+    def _extract_items(data: Any) -> list[dict[str, Any]]:
+        if isinstance(data, list):
+            return [x for x in data if isinstance(x, dict)]
+        if isinstance(data, dict):
+            for key in ("items", "data", "results", "posts"):
+                inner = data.get(key)
+                if isinstance(inner, list):
+                    return [x for x in inner if isinstance(x, dict)]
+        return []
+
+    def _is_article(item: dict[str, Any]) -> bool:
+        """
+        Giữ bài viết tin tức/editorial; loại post cộng đồng/discussion.
+        Fireant có thể đổi tên field, nên check nhiều key và fallback theo source/title.
+        """
+        text_fields = []
+        for k in (
+            "type",
+            "postType",
+            "contentType",
+            "category",
+            "group",
+            "sourceType",
+            "feedType",
+            "origin",
+            "source",
+        ):
+            v = item.get(k)
+            if v is not None:
+                text_fields.append(str(v).strip().lower())
+        merged = " | ".join(text_fields)
+        community_tags = (
+            "community",
+            "cong dong",
+            "discussion",
+            "forum",
+            "chat",
+            "social",
+            "user",
+        )
+        article_tags = ("article", "news", "bao", "tin tuc", "editorial", "analysis")
+
+        if any(tag in merged for tag in community_tags):
+            return False
+        if any(tag in merged for tag in article_tags):
+            return True
+
+        # Fallback theo URL/source domain: nếu từ báo chí thường không phải community.
+        url = str(item.get("url") or item.get("link") or "").lower()
+        if "community" in url or "forum" in url:
+            return False
+        if url:
+            return True
+        # Không đủ metadata: mặc định giữ lại để tránh mất dữ liệu.
+        return True
+
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.get(
             f"{FIREANT_BASE}/symbols/{symbol}/posts",
@@ -138,14 +201,8 @@ async def fetch_symbol_posts(
         if resp.status_code != 200:
             return []
         data = resp.json()
-        if isinstance(data, list):
-            return [x for x in data if isinstance(x, dict)]
-        if isinstance(data, dict):
-            for key in ("items", "data", "results", "posts"):
-                inner = data.get(key)
-                if isinstance(inner, list):
-                    return [x for x in inner if isinstance(x, dict)]
-        return []
+        items = _extract_items(data)
+        return [x for x in items if _is_article(x)]
 
 
 async def fetch_historical_quotes(
