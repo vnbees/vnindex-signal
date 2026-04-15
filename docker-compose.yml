@@ -26,6 +26,7 @@ services:
       DATABASE_URL_SYNC: postgresql://postgres:postgres@postgres:5432/vnindex_signal
       API_SECRET_KEY: dev-secret-key-change-in-prod
       CORS_ORIGINS: '["http://localhost:3000"]'
+      FIREANT_TOKEN: ${FIREANT_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,8 +43,6 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
       API_URL_INTERNAL: http://backend:8000
-      # Raw key matching one row in backend api_keys (see .env.example + README)
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
     depends_on:
       - backend
 

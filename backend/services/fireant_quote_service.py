@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 FIREANT_BASE = "https://restv2.fireant.vn"
 RUN_ANALYSIS = Path(__file__).resolve().parent.parent / "scripts" / "run_analysis.py"
-FIREANT_TOKEN_HARDCODED = (
+# Mặc định dev (khớp _DEFAULT_FIREANT trong run_analysis.py) — production nên set FIREANT_TOKEN trong .env
+FIREANT_TOKEN_FALLBACK = (
     "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IkdYdExONzViZlZQakdvNERWdjV4"
     "QkRITHpnSSIsImtpZCI6IkdYdExONzViZlZQakdvNERWdjV4QkRITHpnSSJ9.eyJpc3MiOiJo"
     "dHRwczovL2FjY291bnRzLmZpcmVhbnQudm4iLCJhdWQiOiJodHRwczovL2FjY291bnRzLmZp"
@@ -89,10 +90,62 @@ def _default_fireant_token() -> str | None:
 
 
 def get_fireant_token() -> str | None:
+    """
+    JWT Fireant (REST không Bearer → 401).
+    Thứ tự: biến môi trường FIREANT_TOKEN → FIREANT_TOKEN_FALLBACK → parse _DEFAULT_FIREANT trong run_analysis.py.
+    """
     token = (os.environ.get("FIREANT_TOKEN") or "").strip()
     if token:
         return token
-    return FIREANT_TOKEN_HARDCODED or _default_fireant_token()
+    if FIREANT_TOKEN_FALLBACK:
+        return FIREANT_TOKEN_FALLBACK
+    return _default_fireant_token()
+
+
+def require_fireant_token() -> str:
+    """Giống get_fireant_token nhưng raise nếu vẫn không có token hợp lệ."""
+    t = get_fireant_token()
+    if not t:
+        raise RuntimeError("Missing Fireant JWT — set FIREANT_TOKEN or keep run_analysis.py _DEFAULT_FIREANT.")
+    return t
+
+
+async def fetch_profile(symbol: str, token: str) -> dict[str, Any] | None:
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.get(f"{FIREANT_BASE}/symbols/{symbol}/profile", headers=headers)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        return data if isinstance(data, dict) else None
+
+
+async def fetch_symbol_posts(
+    symbol: str,
+    token: str,
+    page: int = 1,
+    page_size: int = 50,
+) -> list[dict[str, Any]]:
+    """GET /symbols/{sym}/posts — shape phụ thuộc API; trả list item dict."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    params = {"page": page, "pageSize": page_size}
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.get(
+            f"{FIREANT_BASE}/symbols/{symbol}/posts",
+            params=params,
+            headers=headers,
+        )
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        if isinstance(data, list):
+            return [x for x in data if isinstance(x, dict)]
+        if isinstance(data, dict):
+            for key in ("items", "data", "results", "posts"):
+                inner = data.get(key)
+                if isinstance(inner, list):
+                    return [x for x in inner if isinstance(x, dict)]
+        return []
 
 
 async def fetch_historical_quotes(
@@ -161,6 +214,87 @@ async def upsert_quotes(
                 "symbol": symbol,
                 "trade_date": trade_date,
                 "price_close": price_close,
+                "source_ts": _to_datetime(bar.get("date")),
+            },
+        )
+
+
+async def upsert_quotes_full(
+    db: AsyncSession,
+    symbol: str,
+    quotes: list[dict[str, Any]],
+) -> None:
+    """
+    Ghi đủ OHLCV + total_value; giá lưu **VND** (×1000) giống upsert_quotes price_close.
+    """
+    await db.execute(
+        text(
+            """
+            INSERT INTO fireant_symbol (symbol, universe_131)
+            VALUES (:symbol, FALSE)
+            ON CONFLICT (symbol) DO NOTHING
+            """
+        ),
+        {"symbol": symbol},
+    )
+    stmt = text(
+        """
+        INSERT INTO fireant_quote_daily (
+            symbol, trade_date,
+            price_open, price_high, price_low, price_close,
+            price_average, price_basic, total_volume, total_value,
+            source_ts
+        )
+        VALUES (
+            :symbol, :trade_date,
+            :price_open, :price_high, :price_low, :price_close,
+            :price_average, :price_basic, :total_volume, :total_value,
+            :source_ts
+        )
+        ON CONFLICT (symbol, trade_date) DO UPDATE SET
+          price_open = EXCLUDED.price_open,
+          price_high = EXCLUDED.price_high,
+          price_low = EXCLUDED.price_low,
+          price_close = EXCLUDED.price_close,
+          price_average = EXCLUDED.price_average,
+          price_basic = EXCLUDED.price_basic,
+          total_volume = EXCLUDED.total_volume,
+          total_value = EXCLUDED.total_value,
+          source_ts = EXCLUDED.source_ts,
+          ingested_at = now()
+        """
+    )
+    for bar in quotes:
+        ds = (bar.get("date") or "")[:10]
+        if not ds:
+            continue
+        try:
+            trade_date = date.fromisoformat(ds)
+        except ValueError:
+            continue
+        po = _price_to_vnd(bar.get("priceOpen"))
+        ph = _price_to_vnd(bar.get("priceHigh"))
+        pl = _price_to_vnd(bar.get("priceLow"))
+        pc = _price_to_vnd(bar.get("priceClose"))
+        if pc is None:
+            continue
+        pa = _price_to_vnd(bar.get("priceAverage"))
+        pb = _price_to_vnd(bar.get("priceBasic"))
+        tvol = _to_decimal(bar.get("totalVolume"))
+        tval = _to_decimal(bar.get("totalValue"))
+        await db.execute(
+            stmt,
+            {
+                "symbol": symbol,
+                "trade_date": trade_date,
+                "price_open": po,
+                "price_high": ph,
+                "price_low": pl,
+                "price_close": pc,
+                "price_average": pa,
+                "price_basic": pb,
+                "total_volume": tvol,
+                "total_value": tval,
                 "source_ts": _to_datetime(bar.get("date")),
             },
         )
