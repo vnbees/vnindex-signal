@@ -184,11 +184,44 @@ async def _sync_one_symbol(
         await _persist_posts(db, symbol, posts, as_of_cutoff)
         await db.commit()
         sector, _ = extract_sector_display(profile or {})
-        return symbol, {"quotes": quotes, "profile": profile, "sector": sector}, None
+        return symbol, {"quotes": quotes, "profile": profile, "sector": sector, "posts": posts}, None
     except Exception as e:
         await db.rollback()
         logger.exception("balanced sync failed for %s", symbol)
         return symbol, None, str(e)
+
+
+def _serialize_posts_recent(
+    items: list[dict[str, Any]],
+    as_of_cutoff: date,
+    max_items: int = 10,
+) -> list[dict[str, Any]]:
+    """Trả các bài trong 7 ngày gần nhất, đủ cho AI chấm sentiment."""
+    cutoff_dt = datetime(as_of_cutoff.year, as_of_cutoff.month, as_of_cutoff.day, tzinfo=timezone.utc)
+    start_cut = cutoff_dt - timedelta(days=NEWS_WINDOW_DAYS)
+    enriched: list[dict[str, Any]] = []
+    for item in items:
+        pub = _post_published_at(item)
+        if pub is None:
+            continue
+        if pub.tzinfo is None:
+            pub = pub.replace(tzinfo=timezone.utc)
+        if pub < start_cut or pub > cutoff_dt + timedelta(days=1):
+            continue
+        title, summary = _post_title_summary(item)
+        source = item.get("source") or item.get("publisher") or item.get("site")
+        url = item.get("url") or item.get("link")
+        enriched.append(
+            {
+                "title": title,
+                "summary": summary,
+                "published_at": pub.isoformat(),
+                "source": str(source) if source is not None else None,
+                "url": str(url) if url is not None else None,
+            }
+        )
+    enriched.sort(key=lambda x: x.get("published_at") or "", reverse=True)
+    return enriched[:max_items]
 
 
 def _compute_sector_flows(
@@ -329,11 +362,13 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
             continue
         bucket = sym_sector.get(sym, "Khác")
         sp = sector_pct_map.get(bucket)
+        posts_recent = _serialize_posts_recent(pack.get("posts") or [], t)
         row = {
             "symbol": sym,
             "sector": bucket,
             "sector_flow_pct": sp,
             "indicators": ind,
+            "posts_recent_7d": posts_recent,
             "posts_ingested_note": f"Last {NEWS_WINDOW_DAYS}d window ending {t.isoformat()} — review raw_json in DB for sentiment.",
         }
         symbols_out.append(row)

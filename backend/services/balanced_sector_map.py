@@ -73,6 +73,16 @@ def _iter_strings(value: Any) -> list[str]:
     return out
 
 
+def _looks_like_sector_text(value: str) -> bool:
+    """Loại các giá trị dạng code số (vd. 1353) khỏi candidate ngành."""
+    s = value.strip()
+    if not s:
+        return False
+    norm = _strip_accents_lower(s)
+    # Phải có ít nhất một chữ cái để coi là tên ngành.
+    return any(("a" <= ch <= "z") for ch in norm)
+
+
 def _collect_sector_candidates(profile: dict[str, Any]) -> tuple[list[str], str | None]:
     candidates: list[str] = []
 
@@ -105,6 +115,8 @@ def _collect_sector_candidates(profile: dict[str, Any]) -> tuple[list[str], str 
     seen: set[str] = set()
     dedup: list[str] = []
     for c in candidates:
+        if not _looks_like_sector_text(c):
+            continue
         if c not in seen:
             seen.add(c)
             dedup.append(c)
