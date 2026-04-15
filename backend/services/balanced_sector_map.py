@@ -56,6 +56,61 @@ def _strip_accents_lower(s: str) -> str:
     return out.replace("\u0111", "d")  # đ / Đ (sau lower) → d
 
 
+def _iter_strings(value: Any) -> list[str]:
+    out: list[str] = []
+    if isinstance(value, str):
+        txt = value.strip()
+        if txt:
+            out.append(txt)
+        return out
+    if isinstance(value, dict):
+        for v in value.values():
+            out.extend(_iter_strings(v))
+        return out
+    if isinstance(value, list):
+        for item in value:
+            out.extend(_iter_strings(item))
+    return out
+
+
+def _collect_sector_candidates(profile: dict[str, Any]) -> tuple[list[str], str | None]:
+    candidates: list[str] = []
+
+    icb = profile.get("icbCode") or profile.get("icb_code") or profile.get("ICBCode")
+    icb_code = str(icb).strip() if icb is not None else None
+
+    direct_keys = (
+        "industryName",
+        "industry",
+        "sectorName",
+        "sector",
+        "icbName",
+        "icbIndustryName",
+        "companyIndustry",
+        "groupName",
+        "subIndustry",
+        "sectorDisplay",
+    )
+    for key in direct_keys:
+        if key in profile:
+            candidates.extend(_iter_strings(profile.get(key)))
+
+    # Nhiều profile Fireant để ICB dạng object/list lồng nhau.
+    for key, value in profile.items():
+        k = _strip_accents_lower(str(key))
+        if any(tag in k for tag in ("industry", "sector", "icb", "group")):
+            candidates.extend(_iter_strings(value))
+
+    # Dedup giữ thứ tự.
+    seen: set[str] = set()
+    dedup: list[str] = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            dedup.append(c)
+    return dedup, icb_code
+
+
 def extract_sector_display(profile: dict[str, Any] | None) -> tuple[str | None, str | None]:
     """
     Trả (sector_display, icb_code).
@@ -64,38 +119,18 @@ def extract_sector_display(profile: dict[str, Any] | None) -> tuple[str | None, 
     if not profile or not isinstance(profile, dict):
         return None, None
 
-    icb = profile.get("icbCode") or profile.get("icb_code") or profile.get("ICBCode")
-    icb_code = str(icb).strip() if icb is not None else None
-
-    candidates: list[str] = []
-    for key in (
-        "industryName",
-        "industry",
-        "sectorName",
-        "sector",
-        "icbName",
-        "icbIndustryName",
-        "companyIndustry",
-    ):
-        v = profile.get(key)
-        if isinstance(v, str) and v.strip():
-            candidates.append(v.strip())
-        elif isinstance(v, dict):
-            for sub in ("name", "title", "label", "industryName"):
-                s = v.get(sub)
-                if isinstance(s, str) and s.strip():
-                    candidates.append(s.strip())
-                    break
-
-    raw = candidates[0] if candidates else None
-    if not raw:
+    candidates, icb_code = _collect_sector_candidates(profile)
+    if not candidates:
         return None, icb_code
 
-    norm = _strip_accents_lower(raw)
-    for needle, label in _KEYWORD_SECTOR:
-        if needle in norm:
-            return label, icb_code
-    return raw, icb_code
+    # Ưu tiên candidate match keyword sớm nhất.
+    for raw in candidates:
+        norm = _strip_accents_lower(raw)
+        for needle, label in _KEYWORD_SECTOR:
+            if needle in norm:
+                return label, icb_code
+    # Không match keyword: trả candidate đầu tiên (để không dồn về "Khác")
+    return candidates[0], icb_code
 
 
 def sector_flow_bucket(sector_display: str | None) -> str:

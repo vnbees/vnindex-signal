@@ -194,7 +194,7 @@ async def _sync_one_symbol(
 def _compute_sector_flows(
     per_sym: dict[str, dict[str, Any]],
     universe: tuple[str, ...],
-) -> tuple[date | None, list[dict[str, Any]], dict[str, str]]:
+) -> tuple[date | None, list[dict[str, Any]], dict[str, str], dict[str, float]]:
     """Trả (as_of_date T, top9 list, symbol->sector_bucket)."""
     latest: dict[str, date] = {}
     turnover_by_date_sector: dict[date, dict[str, float]] = defaultdict(lambda: defaultdict(float))
