@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from schemas.balanced import BalancedSnapshotResponse, BalancedSyncResponse
-from services.auth import verify_api_key
 from services.balanced_sync_service import load_snapshot_payload, run_balanced_sync
 from services.fireant_quote_service import require_fireant_token
 
@@ -17,11 +16,10 @@ router = APIRouter(tags=["balanced"])
 @router.get(
     "/api/v1/balanced/sync",
     response_model=BalancedSyncResponse,
-    summary="Đồng bộ Fireant → Postgres + snapshot JSON (226 mã)",
+    summary="Đồng bộ Fireant → Postgres + snapshot JSON (226 mã), không cần API key",
 )
 async def balanced_sync_fireant(
     db: AsyncSession = Depends(get_db),
-    _api_key_id: int = Depends(verify_api_key),
 ):
     try:
         token = require_fireant_token()
