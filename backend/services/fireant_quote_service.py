@@ -126,14 +126,16 @@ async def fetch_symbol_posts(
     page: int = 1,
     page_size: int = 50,
 ) -> list[dict[str, Any]]:
-    """GET /symbols/{sym}/posts, ưu tiên tab 'Bài viết' và loại trừ 'Cộng đồng'."""
+    """Lấy tab Bài viết Fireant qua /posts?symbol={sym}&type=1 (không dùng tab Cộng đồng)."""
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    # Thử hint cho phía API chọn tab bài viết; nếu API bỏ qua thì vẫn có filter phía client.
+    # Quan sát trực tiếp trên browser tab "Bài viết":
+    # GET /posts?symbol=ACV&type=1&offset=0&limit=20
+    offset = max(0, (page - 1) * page_size)
     params = {
-        "page": page,
-        "pageSize": page_size,
-        "tab": "articles",
-        "type": "article",
+        "symbol": symbol,
+        "type": 1,
+        "offset": offset,
+        "limit": page_size,
     }
 
     def _extract_items(data: Any) -> list[dict[str, Any]]:
@@ -212,7 +214,7 @@ async def fetch_symbol_posts(
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.get(
-            f"{FIREANT_BASE}/symbols/{symbol}/posts",
+            f"{FIREANT_BASE}/posts",
             params=params,
             headers=headers,
         )
