@@ -183,14 +183,32 @@ async def fetch_symbol_posts(
         if any(tag in merged for tag in article_tags):
             return True
 
-        # Fallback theo URL/source domain: nếu từ báo chí thường không phải community.
-        url = str(item.get("url") or item.get("link") or "").lower()
+        # Heuristic mạnh: bài viết thường có tiêu đề hoặc nguồn/link rõ ràng.
+        title = str(item.get("title") or item.get("name") or item.get("subject") or "").strip()
+        source = str(item.get("source") or item.get("publisher") or item.get("site") or "").strip()
+        url_raw = str(item.get("url") or item.get("link") or "").strip()
+        url = url_raw.lower()
+        summary = str(item.get("summary") or item.get("description") or item.get("content") or "").strip()
+
+        # Comment cộng đồng thường không có title/source/url và text ngắn dạng hội thoại.
+        if not title and not source and not url_raw:
+            return False
+
+        # Fallback theo URL/source domain: nếu từ cộng đồng/forum thì loại.
         if "community" in url or "forum" in url:
             return False
+
+        # Nếu có title hoặc source/link thì ưu tiên coi là bài viết.
+        if title or source or url_raw:
+            return True
+
+        # Trường hợp cực biên: summary dài có cấu trúc tin tức.
+        if len(summary) >= 180 and ("http" in summary.lower() or "." in summary):
+            return True
         if url:
             return True
         # Không đủ metadata: mặc định giữ lại để tránh mất dữ liệu.
-        return True
+        return False
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.get(
