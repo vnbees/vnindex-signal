@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import re
+import unicodedata
 from typing import Any
 
 # Chuỗi con (không dấu / lower) → tên hiển thị thống nhất (tiếng Việt như example-result)
@@ -49,12 +49,11 @@ _KEYWORD_SECTOR: list[tuple[str, str]] = [
 
 
 def _strip_accents_lower(s: str) -> str:
+    """Bỏ dấu tiếng Việt (và tương tự) để so khớp keyword — tránh maketrans lệch độ dài."""
     s = s.lower().strip()
-    repl = str.maketrans(
-        "áàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ",
-        "aaaaaaaaaaaaaaaaaeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd",
-    )
-    return s.translate(repl)
+    nfkd = unicodedata.normalize("NFD", s)
+    out = "".join(c for c in nfkd if unicodedata.category(c) != "Mn")
+    return out.replace("\u0111", "d")  # đ / Đ (sau lower) → d
 
 
 def extract_sector_display(profile: dict[str, Any] | None) -> tuple[str | None, str | None]:
