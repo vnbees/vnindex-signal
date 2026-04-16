@@ -394,7 +394,17 @@ def _indicators_for_symbol(quotes: list[dict[str, Any]], t: date) -> dict[str, A
         return None
     ind = compute_from_bars(bars_desc)
     close_t = bars_desc[0].close
-    return {**ind, "price_close_vnd": round(close_t, 2), "trade_date": t.isoformat()}
+    vol_latest = bars_desc[0].volume
+    vol_avg_5 = sum(b.volume for b in bars_desc[:5]) / 5.0 if len(bars_desc) >= 5 else None
+    vol_avg_20 = sum(b.volume for b in bars_desc[:20]) / 20.0 if len(bars_desc) >= 20 else None
+    return {
+        **ind,
+        "price_close_vnd": round(close_t, 2),
+        "trade_date": t.isoformat(),
+        "total_volume_latest": round(vol_latest, 4),
+        "avg_volume_5d": round(vol_avg_5, 4) if vol_avg_5 is not None else None,
+        "avg_volume_20d": round(vol_avg_20, 4) if vol_avg_20 is not None else None,
+    }
 
 
 def _passes_balanced_heuristic(
