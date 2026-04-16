@@ -256,7 +256,7 @@ async def fetch_icb_latest_index(token: str) -> list[dict[str, Any]]:
         if isinstance(data, list):
             return [x for x in data if isinstance(x, dict)]
         if isinstance(data, dict):
-            for key in ("items", "data", "results", "rows"):
+            for key in ("items", "data", "results", "rows", "icbIndices"):
                 inner = data.get(key)
                 if isinstance(inner, list):
                     return [x for x in inner if isinstance(x, dict)]

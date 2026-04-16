@@ -257,42 +257,101 @@ def _to_float_safe(value: Any) -> float | None:
         return None
 
 
+def _flatten_icb_row(item: dict[str, Any]) -> dict[str, Any]:
+    """FireAnt /icb/latest-index: mỗi phần tử có industryCode, date, indexValues{...}."""
+    iv = item.get("indexValues")
+    if isinstance(iv, dict):
+        merged = {**item, **iv}
+        return merged
+    return item
+
+
+def _icb_positive_money_flow(flat: dict[str, Any]) -> float | None:
+    for key in ("PositiveMoneyFlow", "positiveMoneyFlow"):
+        v = _to_float_safe(flat.get(key))
+        if v is not None:
+            return v
+    return None
+
+
+def _icb_index_change_pct_day(flat: dict[str, Any]) -> float | None:
+    """% biến động chỉ số ngày — dùng gán sector_flow_pct (cùng thang % với heuristic cũ)."""
+    prev = _to_float_safe(flat.get("IndexPrev") or flat.get("indexPrev"))
+    close = _to_float_safe(flat.get("IndexClose") or flat.get("indexClose"))
+    if prev is not None and close is not None and prev != 0:
+        return (close - prev) / prev * 100.0
+    for key in ("pctChange5d", "changePct", "percentChange", "pct", "change"):
+        v = _to_float_safe(flat.get(key))
+        if v is not None:
+            return v
+    return None
+
+
+def _icb_sector_display_name(flat: dict[str, Any]) -> str | None:
+    raw = (
+        flat.get("ICBName")
+        or flat.get("icbName")
+        or flat.get("name")
+        or flat.get("industryName")
+        or flat.get("title")
+        or flat.get("label")
+    )
+    if raw is not None and str(raw).strip():
+        return str(raw).strip()
+    code = flat.get("ICBCode") or flat.get("icbCode") or flat.get("industryCode")
+    if code is not None and str(code).strip():
+        return f"ICB_{code}"
+    return None
+
+
 def _extract_sector_flows_from_icb(
     rows: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, float]]:
-    """Map response icb/latest-index -> (top9_sectors, sector->pct_change)."""
-    parsed: list[tuple[str, float]] = []
+    """Map icb/latest-index -> top9 theo PositiveMoneyFlow; sector_flow_pct = % chỉ số ngày."""
+    by_sector: dict[str, tuple[float | None, float | None]] = {}
     for item in rows:
-        raw_name = (
-            item.get("name")
-            or item.get("icbName")
-            or item.get("industryName")
-            or item.get("title")
-            or item.get("label")
-        )
+        if not isinstance(item, dict):
+            continue
+        flat = _flatten_icb_row(item)
+        raw_name = _icb_sector_display_name(flat)
         if raw_name is None:
             continue
         sector_name = sector_flow_bucket(str(raw_name))
-        pct: float | None = None
-        for key in ("pctChange5d", "changePct", "percentChange", "pct", "change"):
-            val = _to_float_safe(item.get(key))
-            if val is not None:
-                pct = val
-                break
-        if pct is None:
-            continue
-        parsed.append((sector_name, pct))
+        pmf = _icb_positive_money_flow(flat)
+        day_pct = _icb_index_change_pct_day(flat)
+        prev = by_sector.get(sector_name)
+        if prev is None:
+            by_sector[sector_name] = (pmf, day_pct)
+        else:
+            best_pmf, best_day = prev
+            if pmf is not None and (best_pmf is None or pmf > best_pmf):
+                best_pmf = pmf
+                best_day = day_pct
+            by_sector[sector_name] = (best_pmf, best_day)
 
-    # Giữ max pct nếu API trả nhiều rows cùng bucket.
-    best_by_sector: dict[str, float] = {}
-    for sec, pct in parsed:
-        prev = best_by_sector.get(sec)
-        if prev is None or pct > prev:
-            best_by_sector[sec] = pct
+    rank_rows = [(s, t[0], t[1]) for s, t in by_sector.items()]
+    rank_rows.sort(
+        key=lambda x: (
+            x[1] if x[1] is not None else float("-inf"),
+            x[2] if x[2] is not None else float("-inf"),
+        ),
+        reverse=True,
+    )
+    top9 = []
+    for s, pmf, day_pct in rank_rows[:9]:
+        entry: dict[str, Any] = {
+            "sector": s,
+            "positive_money_flow_vnd": round(pmf, 4) if pmf is not None else None,
+            "index_change_pct_day": round(day_pct, 4) if day_pct is not None else None,
+            "pct_change_vs_5d_avg": round(day_pct, 4) if day_pct is not None else None,
+        }
+        top9.append(entry)
 
-    rows_sorted = sorted(best_by_sector.items(), key=lambda x: x[1], reverse=True)
-    top9 = [{"sector": s, "pct_change_vs_5d_avg": round(p, 4)} for s, p in rows_sorted[:9]]
-    pct_all = {s: round(p, 4) for s, p in rows_sorted}
+    pct_all: dict[str, float] = {}
+    for s, t in by_sector.items():
+        _, day_pct = t
+        if day_pct is not None:
+            pct_all[s] = round(day_pct, 4)
     return top9, pct_all
 
 
@@ -400,6 +459,11 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
         "universe_size": len(BALANCED_DAILY_UNIVERSE),
         "symbols_ok": len([s for s in BALANCED_DAILY_UNIVERSE if per_sym.get(s)]),
         "top9_sectors": top9,
+        "sector_flow": {
+            "source": "restv2.fireant.vn/icb/latest-index",
+            "top9_rank_by": "positive_money_flow_vnd descending (see each item); tie-break by index_change_pct_day",
+            "symbol_sector_pct_field": "index_change_pct_day mapped to sector_flow_pct (percent, not VND)",
+        },
         "symbols": symbols_out,
         "screened_top3": top3,
         "sync_errors": errors,
