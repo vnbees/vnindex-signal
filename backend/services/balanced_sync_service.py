@@ -6,7 +6,6 @@ import asyncio
 import hashlib
 import json
 import logging
-from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
@@ -18,6 +17,7 @@ from services.balanced_sector_map import extract_sector_display, sector_flow_buc
 from services.balanced_universe import BALANCED_DAILY_UNIVERSE
 from database import AsyncSessionLocal
 from services.fireant_quote_service import (
+    fetch_icb_latest_index,
     fetch_historical_quotes,
     fetch_profile,
     fetch_symbol_posts,
@@ -35,23 +35,6 @@ def _parse_bar_date(bar: dict[str, Any]) -> date | None:
         return date.fromisoformat(ds)
     except ValueError:
         return None
-
-
-def _bar_turnover_vnd(bar: dict[str, Any]) -> float:
-    tv = bar.get("totalValue")
-    if tv is not None:
-        try:
-            return float(tv)
-        except (TypeError, ValueError):
-            pass
-    pc = bar.get("priceClose")
-    vol = bar.get("totalVolume")
-    if pc is not None and vol is not None:
-        try:
-            return float(pc) * float(vol) * 1000.0
-        except (TypeError, ValueError):
-            pass
-    return 0.0
 
 
 def _post_external_id(symbol: str, item: dict[str, Any]) -> str:
@@ -224,14 +207,14 @@ def _serialize_posts_recent(
     return enriched[:max_items]
 
 
-def _compute_sector_flows(
+def _resolve_analysis_date_and_symbol_sector(
     per_sym: dict[str, dict[str, Any]],
     universe: tuple[str, ...],
-) -> tuple[date | None, list[dict[str, Any]], dict[str, str], dict[str, float]]:
-    """Trả (as_of_date T, top9 list, symbol->sector_bucket)."""
+) -> tuple[date | None, dict[str, str]]:
+    """Trả (as_of_date T, symbol->sector_bucket) từ dữ liệu quote/profile đã sync."""
     latest: dict[str, date] = {}
-    turnover_by_date_sector: dict[date, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     sym_sector: dict[str, str] = {}
+    all_dates: set[date] = set()
 
     for sym in universe:
         pack = per_sym.get(sym)
@@ -246,42 +229,71 @@ def _compute_sector_flows(
             d = _parse_bar_date(bar)
             if d:
                 dates_sym.append(d)
-                turnover_by_date_sector[d][bucket] += _bar_turnover_vnd(bar)
+                all_dates.add(d)
         if dates_sym:
             latest[sym] = max(dates_sym)
 
     if not latest:
-        return None, [], sym_sector, {}
+        return None, sym_sector
 
     t_target = min(latest.values())
-    sorted_asc = sorted(turnover_by_date_sector.keys())
+    sorted_asc = sorted(all_dates)
     if not sorted_asc:
-        return None, [], sym_sector, {}
-    if t_target in turnover_by_date_sector:
+        return None, sym_sector
+    if t_target in all_dates:
         t = t_target
     else:
         older = [d for d in sorted_asc if d <= t_target]
         t = older[-1] if older else sorted_asc[-1]
-    idx = sorted_asc.index(t)
-    prior = sorted_asc[max(0, idx - 5) : idx]
+    return t, sym_sector
 
-    sector_list = sorted(
-        {b for sums in turnover_by_date_sector.values() for b in sums.keys()}
-    )
-    rows: list[tuple[str, float]] = []
-    for sec in sector_list:
-        cur = turnover_by_date_sector[t].get(sec, 0.0)
-        if not prior:
-            pct = 0.0
-        else:
-            hist = [turnover_by_date_sector.get(d, {}).get(sec, 0.0) for d in prior]
-            avg = sum(hist) / max(len(hist), 1)
-            pct = ((cur - avg) / avg * 100.0) if avg > 0 else 0.0
-        rows.append((sec, pct))
-    rows.sort(key=lambda x: x[1], reverse=True)
-    top9 = [{"sector": s, "pct_change_vs_5d_avg": round(p, 4)} for s, p in rows[:9]]
-    pct_all = {s: round(p, 4) for s, p in rows}
-    return t, top9, sym_sector, pct_all
+
+def _to_float_safe(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_sector_flows_from_icb(
+    rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, float]]:
+    """Map response icb/latest-index -> (top9_sectors, sector->pct_change)."""
+    parsed: list[tuple[str, float]] = []
+    for item in rows:
+        raw_name = (
+            item.get("name")
+            or item.get("icbName")
+            or item.get("industryName")
+            or item.get("title")
+            or item.get("label")
+        )
+        if raw_name is None:
+            continue
+        sector_name = sector_flow_bucket(str(raw_name))
+        pct: float | None = None
+        for key in ("pctChange5d", "changePct", "percentChange", "pct", "change"):
+            val = _to_float_safe(item.get(key))
+            if val is not None:
+                pct = val
+                break
+        if pct is None:
+            continue
+        parsed.append((sector_name, pct))
+
+    # Giữ max pct nếu API trả nhiều rows cùng bucket.
+    best_by_sector: dict[str, float] = {}
+    for sec, pct in parsed:
+        prev = best_by_sector.get(sec)
+        if prev is None or pct > prev:
+            best_by_sector[sec] = pct
+
+    rows_sorted = sorted(best_by_sector.items(), key=lambda x: x[1], reverse=True)
+    top9 = [{"sector": s, "pct_change_vs_5d_avg": round(p, 4)} for s, p in rows_sorted[:9]]
+    pct_all = {s: round(p, 4) for s, p in rows_sorted}
+    return top9, pct_all
 
 
 def _indicators_for_symbol(quotes: list[dict[str, Any]], t: date) -> dict[str, Any] | None:
@@ -346,10 +358,12 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
 
     await asyncio.gather(*(wrapped(s) for s in BALANCED_DAILY_UNIVERSE))
 
-    t, top9, sym_sector, sector_pct_map = _compute_sector_flows(
+    t, sym_sector = _resolve_analysis_date_and_symbol_sector(
         {k: v for k, v in per_sym.items() if v},
         BALANCED_DAILY_UNIVERSE,
     )
+    icb_rows = await fetch_icb_latest_index(token)
+    top9, sector_pct_map = _extract_sector_flows_from_icb(icb_rows)
 
     symbols_out: list[dict[str, Any]] = []
     candidates: list[tuple[float, dict[str, Any]]] = []

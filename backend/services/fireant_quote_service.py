@@ -248,6 +248,27 @@ async def fetch_historical_quotes(
         return payload if isinstance(payload, list) else []
 
 
+async def fetch_icb_latest_index(token: str) -> list[dict[str, Any]]:
+    """Lấy dữ liệu dòng tiền nhóm ngành từ API dashboard ngành nghề của FireAnt."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    def _extract_rows(data: Any) -> list[dict[str, Any]]:
+        if isinstance(data, list):
+            return [x for x in data if isinstance(x, dict)]
+        if isinstance(data, dict):
+            for key in ("items", "data", "results", "rows"):
+                inner = data.get(key)
+                if isinstance(inner, list):
+                    return [x for x in inner if isinstance(x, dict)]
+        return []
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.get(f"{FIREANT_BASE}/icb/latest-index", headers=headers)
+        if resp.status_code != 200:
+            return []
+        return _extract_rows(resp.json())
+
+
 async def upsert_quotes(
     db: AsyncSession,
     symbol: str,
