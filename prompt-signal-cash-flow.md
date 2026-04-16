@@ -13,7 +13,9 @@ TÌM CỔ PHIẾU CÓ TÍN HIỆU MUA - CHIẾN LƯỢC TỐI ƯU BALANCED
 - Ngành của mã: đọc trường sector (hoặc sector_display tương đương).
 - Chỉ báo kỹ thuật: đọc các trường RSI, MACD histogram, SMA5/SMA20 ratio, ADX, volume ratio trong object indicators (hoặc key tương đương trong mỗi symbol).
 - Volume điều kiện: dùng indicators.total_volume_latest và indicators.avg_volume_5d để kiểm tra Volume ngày gần nhất > trung bình 5 phiên và ngưỡng >= 100,000.
-- Dòng tiền ngành TOP 9: đọc từ phần top9_sectors (hoặc key tương đương chứa dữ liệu TOP 9 ngành).
+- Dòng tiền ngành TOP 9: đọc từ phần top9_sectors; ưu tiên trường positive_money_flow_pct_vs_5d_avg (hoặc pct_change_vs_5d_avg) để xếp hạng theo logic 5 phiên.
+- Dữ liệu đầy đủ tất cả ngành để đối chiếu nằm ở all_sectors (mỗi ngành có positive_money_flow_vnd, positive_money_flow_avg_5d_vnd, positive_money_flow_pct_vs_5d_avg).
+- Quy tắc fallback dòng tiền ngành: nếu ngành nào chưa có positive_money_flow_pct_vs_5d_avg (thiếu lịch sử 5 phiên) thì dùng positive_money_flow_vnd hoặc sector_flow_pct hiện có.
 - Tin tức 7 ngày: đọc từ posts_recent_7d của từng symbol để đánh giá tích cực/tiêu cực.
 
 📊 KẾT QUẢ BACKTEST (20 NGÀY):

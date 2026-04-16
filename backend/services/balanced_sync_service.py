@@ -389,6 +389,102 @@ def _extract_sector_flows_from_icb(
     return top9, pct_all, all_sectors
 
 
+async def _load_prior_all_sectors(
+    db: AsyncSession,
+    as_of_date: date,
+    lookback: int = 5,
+) -> list[list[dict[str, Any]]]:
+    """Load prior snapshots' all_sectors (newest -> oldest), excluding current as_of_date."""
+    rows = (
+        await db.execute(
+            text(
+                """
+                SELECT payload
+                FROM balanced_daily_snapshot
+                WHERE as_of_date < :as_of_date
+                ORDER BY as_of_date DESC
+                LIMIT :lim
+                """
+            ),
+            {"as_of_date": as_of_date, "lim": lookback},
+        )
+    ).all()
+    out: list[list[dict[str, Any]]] = []
+    for row in rows:
+        p = row[0]
+        if isinstance(p, str):
+            try:
+                p = json.loads(p)
+            except Exception:
+                continue
+        if not isinstance(p, dict):
+            continue
+        all_sectors = p.get("all_sectors")
+        if isinstance(all_sectors, list):
+            out.append([x for x in all_sectors if isinstance(x, dict)])
+    return out
+
+
+def _enrich_sector_flow_5d(
+    all_sectors: list[dict[str, Any]],
+    prior_all_sectors: list[list[dict[str, Any]]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, float]]:
+    """
+    Add 5-day cash-flow context:
+    - positive_money_flow_avg_5d_vnd
+    - positive_money_flow_pct_vs_5d_avg
+    Return (all_enriched, top9_by_5d, bucket_pct_map_for_symbols)
+    """
+    hist_by_sector: dict[str, list[float]] = {}
+    for daily in prior_all_sectors:
+        for item in daily:
+            sec = item.get("sector")
+            pmf = _to_float_safe(item.get("positive_money_flow_vnd"))
+            if sec is None or pmf is None:
+                continue
+            s = str(sec).strip()
+            if not s:
+                continue
+            hist_by_sector.setdefault(s, []).append(pmf)
+
+    enriched: list[dict[str, Any]] = []
+    for item in all_sectors:
+        sec = str(item.get("sector") or "").strip()
+        cur = _to_float_safe(item.get("positive_money_flow_vnd"))
+        prior = hist_by_sector.get(sec, [])
+        avg5 = (sum(prior) / len(prior)) if prior else None
+        pct5 = ((cur - avg5) / avg5 * 100.0) if (cur is not None and avg5 is not None and avg5 > 0) else None
+        row = dict(item)
+        row["positive_money_flow_avg_5d_vnd"] = round(avg5, 4) if avg5 is not None else None
+        row["positive_money_flow_pct_vs_5d_avg"] = round(pct5, 4) if pct5 is not None else None
+        if pct5 is not None:
+            # Keep backward-compatible key but now truly vs 5d avg.
+            row["pct_change_vs_5d_avg"] = round(pct5, 4)
+        enriched.append(row)
+
+    def _rank_key(x: dict[str, Any]) -> tuple[float, float]:
+        pct = _to_float_safe(x.get("positive_money_flow_pct_vs_5d_avg"))
+        pmf = _to_float_safe(x.get("positive_money_flow_vnd"))
+        return (
+            pct if pct is not None else float("-inf"),
+            pmf if pmf is not None else float("-inf"),
+        )
+
+    top9 = sorted(enriched, key=_rank_key, reverse=True)[:9]
+
+    bucket_map: dict[str, float] = {}
+    for item in enriched:
+        bucket = str(item.get("sector_group") or "").strip()
+        pct = _to_float_safe(item.get("positive_money_flow_pct_vs_5d_avg"))
+        if not bucket or pct is None:
+            continue
+        prev = bucket_map.get(bucket)
+        if prev is None or pct > prev:
+            bucket_map[bucket] = pct
+
+    return enriched, top9, {k: round(v, 4) for k, v in bucket_map.items()}
+
+
 def _indicators_for_symbol(quotes: list[dict[str, Any]], t: date) -> dict[str, Any] | None:
     dated: list[tuple[date, BarCloseVol]] = []
     for bar in quotes:
@@ -467,6 +563,12 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
     )
     icb_rows = await fetch_icb_latest_index(token)
     top9, sector_pct_map, all_sectors = _extract_sector_flows_from_icb(icb_rows)
+    prior_all_sectors = await _load_prior_all_sectors(db, t) if t is not None else []
+    all_sectors_enriched, top9_5d, sector_pct_map_5d = _enrich_sector_flow_5d(all_sectors, prior_all_sectors)
+    if top9_5d:
+        top9 = top9_5d
+    if sector_pct_map_5d:
+        sector_pct_map = sector_pct_map_5d
 
     symbols_out: list[dict[str, Any]] = []
     candidates: list[tuple[float, dict[str, Any]]] = []
@@ -503,12 +605,13 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
         "universe_size": len(BALANCED_DAILY_UNIVERSE),
         "symbols_ok": len([s for s in BALANCED_DAILY_UNIVERSE if per_sym.get(s)]),
         "top9_sectors": top9,
-        "all_sectors": all_sectors,
+        "all_sectors": all_sectors_enriched,
         "sector_flow": {
             "source": "restv2.fireant.vn/icb/latest-index",
-            "top9_rank_by": "positive_money_flow_vnd per ICB row (ngành con); tie-break by index_change_pct_day",
+            "top9_rank_by": "positive_money_flow_pct_vs_5d_avg descending when available; fallback to positive_money_flow_vnd",
             "top9_sector_field": "sector = ICBName đầy đủ; sector_group = map thô cho prompt Balanced",
-            "symbol_sector_pct_field": "index_change_pct_day theo sector_group (bucket) -> sector_flow_pct",
+            "symbol_sector_pct_field": "positive_money_flow_pct_vs_5d_avg theo sector_group (bucket) -> sector_flow_pct",
+            "lookback_days_for_avg": 5,
         },
         "symbols": symbols_out,
         "screened_top3": top3,
