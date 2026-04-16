@@ -306,7 +306,7 @@ def _icb_sector_display_name(flat: dict[str, Any]) -> str | None:
 
 def _extract_sector_flows_from_icb(
     rows: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], dict[str, float]]:
+) -> tuple[list[dict[str, Any]], dict[str, float], list[dict[str, Any]]]:
     """
     - top9: 9 dòng ICB chi tiết (ngành con như FireAnt), không gộp bucket.
     - pct_all: theo sector_flow_bucket (nhóm prompt) để map sector_flow_pct từng mã CP.
@@ -353,6 +353,21 @@ def _extract_sector_flows_from_icb(
     )
 
     top9: list[dict[str, Any]] = []
+    all_sectors: list[dict[str, Any]] = []
+    for r in parsed:
+        pmf = r["pmf"]
+        day_pct = r["day_pct"]
+        all_sectors.append(
+            {
+                "sector": r["raw_name"],
+                "icb_code": r["icb_code"],
+                "sector_group": r["bucket"],
+                "positive_money_flow_vnd": round(pmf, 4) if pmf is not None else None,
+                "index_change_pct_day": round(day_pct, 4) if day_pct is not None else None,
+                "pct_change_vs_5d_avg": round(day_pct, 4) if day_pct is not None else None,
+            }
+        )
+
     for r in parsed[:9]:
         pmf = r["pmf"]
         day_pct = r["day_pct"]
@@ -371,7 +386,7 @@ def _extract_sector_flows_from_icb(
         _, day_pct = t
         if day_pct is not None:
             pct_all[b] = round(day_pct, 4)
-    return top9, pct_all
+    return top9, pct_all, all_sectors
 
 
 def _indicators_for_symbol(quotes: list[dict[str, Any]], t: date) -> dict[str, Any] | None:
@@ -451,7 +466,7 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
         BALANCED_DAILY_UNIVERSE,
     )
     icb_rows = await fetch_icb_latest_index(token)
-    top9, sector_pct_map = _extract_sector_flows_from_icb(icb_rows)
+    top9, sector_pct_map, all_sectors = _extract_sector_flows_from_icb(icb_rows)
 
     symbols_out: list[dict[str, Any]] = []
     candidates: list[tuple[float, dict[str, Any]]] = []
@@ -488,6 +503,7 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
         "universe_size": len(BALANCED_DAILY_UNIVERSE),
         "symbols_ok": len([s for s in BALANCED_DAILY_UNIVERSE if per_sym.get(s)]),
         "top9_sectors": top9,
+        "all_sectors": all_sectors,
         "sector_flow": {
             "source": "restv2.fireant.vn/icb/latest-index",
             "top9_rank_by": "positive_money_flow_vnd per ICB row (ngành con); tie-break by index_change_pct_day",
