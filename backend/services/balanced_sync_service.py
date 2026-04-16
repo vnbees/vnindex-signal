@@ -307,8 +307,13 @@ def _icb_sector_display_name(flat: dict[str, Any]) -> str | None:
 def _extract_sector_flows_from_icb(
     rows: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, float]]:
-    """Map icb/latest-index -> top9 theo PositiveMoneyFlow; sector_flow_pct = % chỉ số ngày."""
-    by_sector: dict[str, tuple[float | None, float | None]] = {}
+    """
+    - top9: 9 dòng ICB chi tiết (ngành con như FireAnt), không gộp bucket.
+    - pct_all: theo sector_flow_bucket (nhóm prompt) để map sector_flow_pct từng mã CP.
+    """
+    parsed: list[dict[str, Any]] = []
+    by_bucket: dict[str, tuple[float | None, float | None]] = {}
+
     for item in rows:
         if not isinstance(item, dict):
             continue
@@ -316,31 +321,45 @@ def _extract_sector_flows_from_icb(
         raw_name = _icb_sector_display_name(flat)
         if raw_name is None:
             continue
-        sector_name = sector_flow_bucket(str(raw_name))
         pmf = _icb_positive_money_flow(flat)
         day_pct = _icb_index_change_pct_day(flat)
-        prev = by_sector.get(sector_name)
+        bucket = sector_flow_bucket(str(raw_name))
+        code = flat.get("ICBCode") or flat.get("icbCode") or flat.get("industryCode")
+        parsed.append(
+            {
+                "raw_name": raw_name,
+                "icb_code": str(code).strip() if code is not None else None,
+                "bucket": bucket,
+                "pmf": pmf,
+                "day_pct": day_pct,
+            }
+        )
+        prev = by_bucket.get(bucket)
         if prev is None:
-            by_sector[sector_name] = (pmf, day_pct)
+            by_bucket[bucket] = (pmf, day_pct)
         else:
             best_pmf, best_day = prev
             if pmf is not None and (best_pmf is None or pmf > best_pmf):
                 best_pmf = pmf
                 best_day = day_pct
-            by_sector[sector_name] = (best_pmf, best_day)
+            by_bucket[bucket] = (best_pmf, best_day)
 
-    rank_rows = [(s, t[0], t[1]) for s, t in by_sector.items()]
-    rank_rows.sort(
-        key=lambda x: (
-            x[1] if x[1] is not None else float("-inf"),
-            x[2] if x[2] is not None else float("-inf"),
+    parsed.sort(
+        key=lambda r: (
+            r["pmf"] if r["pmf"] is not None else float("-inf"),
+            r["day_pct"] if r["day_pct"] is not None else float("-inf"),
         ),
         reverse=True,
     )
-    top9 = []
-    for s, pmf, day_pct in rank_rows[:9]:
-        entry: dict[str, Any] = {
-            "sector": s,
+
+    top9: list[dict[str, Any]] = []
+    for r in parsed[:9]:
+        pmf = r["pmf"]
+        day_pct = r["day_pct"]
+        entry = {
+            "sector": r["raw_name"],
+            "icb_code": r["icb_code"],
+            "sector_group": r["bucket"],
             "positive_money_flow_vnd": round(pmf, 4) if pmf is not None else None,
             "index_change_pct_day": round(day_pct, 4) if day_pct is not None else None,
             "pct_change_vs_5d_avg": round(day_pct, 4) if day_pct is not None else None,
@@ -348,10 +367,10 @@ def _extract_sector_flows_from_icb(
         top9.append(entry)
 
     pct_all: dict[str, float] = {}
-    for s, t in by_sector.items():
+    for b, t in by_bucket.items():
         _, day_pct = t
         if day_pct is not None:
-            pct_all[s] = round(day_pct, 4)
+            pct_all[b] = round(day_pct, 4)
     return top9, pct_all
 
 
@@ -461,8 +480,9 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
         "top9_sectors": top9,
         "sector_flow": {
             "source": "restv2.fireant.vn/icb/latest-index",
-            "top9_rank_by": "positive_money_flow_vnd descending (see each item); tie-break by index_change_pct_day",
-            "symbol_sector_pct_field": "index_change_pct_day mapped to sector_flow_pct (percent, not VND)",
+            "top9_rank_by": "positive_money_flow_vnd per ICB row (ngành con); tie-break by index_change_pct_day",
+            "top9_sector_field": "sector = ICBName đầy đủ; sector_group = map thô cho prompt Balanced",
+            "symbol_sector_pct_field": "index_change_pct_day theo sector_group (bucket) -> sector_flow_pct",
         },
         "symbols": symbols_out,
         "screened_top3": top3,
