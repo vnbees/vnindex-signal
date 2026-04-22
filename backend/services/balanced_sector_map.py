@@ -111,14 +111,6 @@ def _collect_sector_candidates(profile: dict[str, Any]) -> tuple[list[str], str 
         if any(tag in k for tag in ("industry", "sector", "icb", "group")):
             candidates.extend(_iter_strings(value))
 
-    # Fallback rộng: quét toàn bộ string trong profile, sau đó lọc theo keyword ngành.
-    # Nhiều response Fireant chỉ chứa tên ngành ở cấu trúc key không chuẩn.
-    all_strings = _iter_strings(profile)
-    for raw in all_strings:
-        norm = _strip_accents_lower(raw)
-        if any(needle in norm for needle, _ in _KEYWORD_SECTOR):
-            candidates.append(raw)
-
     # Dedup giữ thứ tự.
     seen: set[str] = set()
     dedup: list[str] = []

@@ -17,9 +17,11 @@ from services.balanced_sector_map import extract_sector_display, sector_flow_buc
 from services.balanced_universe import BALANCED_DAILY_UNIVERSE
 from database import AsyncSessionLocal
 from services.fireant_quote_service import (
+    fetch_icb_catalog,
     fetch_icb_latest_index,
     fetch_historical_quotes,
     fetch_profile,
+    fetch_symbol_meta,
     fetch_symbol_posts,
     upsert_quotes_full,
 )
@@ -161,13 +163,30 @@ async def _sync_one_symbol(
         quotes = await fetch_historical_quotes(symbol, start_date, end_date, token)
         if quotes:
             await upsert_quotes_full(db, symbol, quotes)
+        symbol_meta = await fetch_symbol_meta(symbol, token)
         profile = await fetch_profile(symbol, token)
         await _persist_profile(db, symbol, profile)
         posts = await fetch_symbol_posts(symbol, token, page=1, page_size=50)
         await _persist_posts(db, symbol, posts, as_of_cutoff)
         await db.commit()
-        sector, _ = extract_sector_display(profile or {})
-        return symbol, {"quotes": quotes, "profile": profile, "sector": sector, "posts": posts}, None
+        sector, icb_code = extract_sector_display(profile or {})
+        # Ưu tiên ICB code từ endpoint /symbols/{symbol} vì ổn định hơn profile text.
+        if isinstance(symbol_meta, dict):
+            icb_from_meta = symbol_meta.get("icbCode") or symbol_meta.get("industryCode")
+            if icb_from_meta is not None and str(icb_from_meta).strip():
+                icb_code = str(icb_from_meta).strip()
+        return (
+            symbol,
+            {
+                "quotes": quotes,
+                "profile": profile,
+                "symbol_meta": symbol_meta,
+                "sector": sector,
+                "icb_code": icb_code,
+                "posts": posts,
+            },
+            None,
+        )
     except Exception as e:
         await db.rollback()
         logger.exception("balanced sync failed for %s", symbol)
@@ -210,10 +229,11 @@ def _serialize_posts_recent(
 def _resolve_analysis_date_and_symbol_sector(
     per_sym: dict[str, dict[str, Any]],
     universe: tuple[str, ...],
-) -> tuple[date | None, dict[str, str]]:
-    """Trả (as_of_date T, symbol->sector_bucket) từ dữ liệu quote/profile đã sync."""
+) -> tuple[date | None, dict[str, str], dict[str, str | None]]:
+    """Trả (as_of_date T, symbol->sector_bucket, symbol->icb_code)."""
     latest: dict[str, date] = {}
     sym_sector: dict[str, str] = {}
+    sym_icb_code: dict[str, str | None] = {}
     all_dates: set[date] = set()
 
     for sym in universe:
@@ -224,6 +244,8 @@ def _resolve_analysis_date_and_symbol_sector(
         sector_raw = pack.get("sector") or "Khác"
         bucket = sector_flow_bucket(str(sector_raw))
         sym_sector[sym] = bucket
+        raw_icb = pack.get("icb_code")
+        sym_icb_code[sym] = str(raw_icb).strip() if raw_icb is not None and str(raw_icb).strip() else None
         dates_sym: list[date] = []
         for bar in quotes:
             d = _parse_bar_date(bar)
@@ -234,18 +256,18 @@ def _resolve_analysis_date_and_symbol_sector(
             latest[sym] = max(dates_sym)
 
     if not latest:
-        return None, sym_sector
+        return None, sym_sector, sym_icb_code
 
     t_target = min(latest.values())
     sorted_asc = sorted(all_dates)
     if not sorted_asc:
-        return None, sym_sector
+        return None, sym_sector, sym_icb_code
     if t_target in all_dates:
         t = t_target
     else:
         older = [d for d in sorted_asc if d <= t_target]
         t = older[-1] if older else sorted_asc[-1]
-    return t, sym_sector
+    return t, sym_sector, sym_icb_code
 
 
 def _to_float_safe(value: Any) -> float | None:
@@ -557,11 +579,12 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
 
     await asyncio.gather(*(wrapped(s) for s in BALANCED_DAILY_UNIVERSE))
 
-    t, sym_sector = _resolve_analysis_date_and_symbol_sector(
+    t, sym_sector, sym_icb_code = _resolve_analysis_date_and_symbol_sector(
         {k: v for k, v in per_sym.items() if v},
         BALANCED_DAILY_UNIVERSE,
     )
     icb_rows = await fetch_icb_latest_index(token)
+    icb_catalog = await fetch_icb_catalog(token)
     top9, sector_pct_map, all_sectors = _extract_sector_flows_from_icb(icb_rows)
     prior_all_sectors = await _load_prior_all_sectors(db, t) if t is not None else []
     all_sectors_enriched, top9_5d, sector_pct_map_5d = _enrich_sector_flow_5d(all_sectors, prior_all_sectors)
@@ -569,6 +592,33 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
         top9 = top9_5d
     if sector_pct_map_5d:
         sector_pct_map = sector_pct_map_5d
+
+    icb_catalog_name_by_code: dict[str, str] = {}
+    for item in icb_catalog:
+        code = item.get("industryCode") or item.get("icbCode")
+        name = item.get("name") or item.get("industryName")
+        if code is None or name is None:
+            continue
+        code_s = str(code).strip()
+        name_s = str(name).strip()
+        if code_s and name_s:
+            icb_catalog_name_by_code[code_s] = name_s
+
+    icb_name_by_code: dict[str, str] = {}
+    icb_bucket_by_code: dict[str, str] = {}
+    for item in all_sectors_enriched:
+        code = item.get("icb_code")
+        name = item.get("sector")
+        bucket = item.get("sector_group")
+        if code is None:
+            continue
+        code_s = str(code).strip()
+        if not code_s:
+            continue
+        if isinstance(name, str) and name.strip():
+            icb_name_by_code[code_s] = name.strip()
+        if isinstance(bucket, str) and bucket.strip():
+            icb_bucket_by_code[code_s] = bucket.strip()
 
     symbols_out: list[dict[str, Any]] = []
     candidates: list[tuple[float, dict[str, Any]]] = []
@@ -580,11 +630,25 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
         if not ind:
             continue
         bucket = sym_sector.get(sym, "Khác")
+        icb_code = sym_icb_code.get(sym)
+        if icb_code:
+            bucket = icb_bucket_by_code.get(
+                icb_code,
+                sector_flow_bucket(icb_catalog_name_by_code.get(icb_code, bucket)),
+            )
+        sector_display = bucket
+        if icb_code:
+            sector_display = icb_catalog_name_by_code.get(
+                icb_code,
+                icb_name_by_code.get(icb_code, sector_display),
+            )
         sp = sector_pct_map.get(bucket)
         posts_recent = _serialize_posts_recent(pack.get("posts") or [], t)
         row = {
             "symbol": sym,
-            "sector": bucket,
+            "sector": sector_display,
+            "sector_group": bucket,
+            "icb_code": icb_code,
             "sector_flow_pct": sp,
             "indicators": ind,
             "posts_recent_7d": posts_recent,

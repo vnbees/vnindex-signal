@@ -120,6 +120,17 @@ async def fetch_profile(symbol: str, token: str) -> dict[str, Any] | None:
         return data if isinstance(data, dict) else None
 
 
+async def fetch_symbol_meta(symbol: str, token: str) -> dict[str, Any] | None:
+    """Lấy metadata symbol (bao gồm icbCode/industryCode chuẩn cho phân ngành)."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.get(f"{FIREANT_BASE}/symbols/{symbol}", headers=headers)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        return data if isinstance(data, dict) else None
+
+
 async def fetch_symbol_posts(
     symbol: str,
     token: str,
@@ -267,6 +278,17 @@ async def fetch_icb_latest_index(token: str) -> list[dict[str, Any]]:
         if resp.status_code != 200:
             return []
         return _extract_rows(resp.json())
+
+
+async def fetch_icb_catalog(token: str) -> list[dict[str, Any]]:
+    """Lấy taxonomy ICB đầy đủ (industryCode -> tên ngành tiếng Việt)."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.get(f"{FIREANT_BASE}/icb", headers=headers)
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
 
 
 async def upsert_quotes(
