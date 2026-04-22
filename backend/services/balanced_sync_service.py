@@ -848,11 +848,9 @@ async def load_sector_flow_5d_payload(
 
     ordered = list(reversed(rows))
     session_dates: list[str] = []
-    sector_map: dict[str, dict[str, Any]] = {}
 
-    for as_of_date, payload_raw in ordered:
-        session_dates.append(as_of_date.isoformat())
-        payload = payload_raw
+    def _load_payload(raw: Any) -> dict[str, Any]:
+        payload = raw
         if isinstance(payload, str):
             try:
                 payload = json.loads(payload)
@@ -860,29 +858,68 @@ async def load_sector_flow_5d_payload(
                 payload = {}
         if not isinstance(payload, dict):
             payload = {}
+        return payload
+
+    # Chuẩn nhất: taxonomy cho timeseries lấy theo snapshot anchor (hiện tại).
+    # Điều này loại nhiễu do lịch sử cũ có thể trộn level 1/2/4.
+    anchor_payload = _load_payload(ordered[-1][1])
+    anchor_all_sectors = anchor_payload.get("all_sectors")
+    if not isinstance(anchor_all_sectors, list):
+        anchor_all_sectors = []
+
+    anchor_code_to_meta: dict[str, dict[str, Any]] = {}
+    for item in anchor_all_sectors:
+        if not isinstance(item, dict):
+            continue
+        code_raw = item.get("icb_code")
+        code = str(code_raw).strip() if code_raw is not None else ""
+        # Pipeline hiện đã chuẩn level 3; giữ đúng level 3 (mã 6 ký tự).
+        if len(code) != 6:
+            continue
+        sector_name = str(item.get("sector") or "").strip()
+        if not sector_name:
+            continue
+        anchor_code_to_meta[code] = {
+            "sector": sector_name,
+            "sector_group": item.get("sector_group") or sector_name,
+            "icb_code": code,
+        }
+    if not anchor_code_to_meta:
+        return None
+
+    sector_map: dict[str, dict[str, Any]] = {
+        code: {"sector": meta["sector"], "sector_group": meta["sector_group"], "icb_code": code, "points": []}
+        for code, meta in anchor_code_to_meta.items()
+    }
+
+    for as_of_date, payload_raw in ordered:
+        session_dates.append(as_of_date.isoformat())
+        payload = _load_payload(payload_raw)
         all_sectors = payload.get("all_sectors")
         if not isinstance(all_sectors, list):
-            continue
+            all_sectors = []
 
-        by_name: dict[str, dict[str, Any]] = {}
+        # Gộp theo level 3 code để tương thích dữ liệu cũ (có thể lưu level 4).
+        by_code: dict[str, float] = {}
         for item in all_sectors:
             if not isinstance(item, dict):
                 continue
-            sector_name = str(item.get("sector") or "").strip()
-            if not sector_name:
+            code_raw = item.get("icb_code")
+            code = str(code_raw).strip() if code_raw is not None else ""
+            if not code:
                 continue
-            by_name[sector_name] = item
-            if sector_name not in sector_map:
-                sector_map[sector_name] = {
-                    "sector": sector_name,
-                    "sector_group": item.get("sector_group"),
-                    "icb_code": item.get("icb_code"),
-                    "points": [],
-                }
+            # Map code lịch sử về level 3 bằng prefix 6 ký tự.
+            code_l3 = code if len(code) == 6 else (code[:6] if len(code) > 6 else "")
+            if code_l3 not in sector_map:
+                continue
+            pmf = _to_float_safe(item.get("positive_money_flow_vnd"))
+            if pmf is None:
+                continue
+            by_code[code_l3] = by_code.get(code_l3, 0.0) + pmf
 
-        for sector_name, row in sector_map.items():
-            cur = by_name.get(sector_name)
-            if cur is None:
+        for code, row in sector_map.items():
+            cur_pmf = by_code.get(code)
+            if cur_pmf is None:
                 row["points"].append(
                     {
                         "date": as_of_date.isoformat(),
@@ -894,10 +931,8 @@ async def load_sector_flow_5d_payload(
             row["points"].append(
                 {
                     "date": as_of_date.isoformat(),
-                    "positive_money_flow_vnd": _to_float_safe(cur.get("positive_money_flow_vnd")),
-                    "positive_money_flow_pct_vs_5d_avg": _to_float_safe(
-                        cur.get("positive_money_flow_pct_vs_5d_avg")
-                    ),
+                    "positive_money_flow_vnd": cur_pmf,
+                    "positive_money_flow_pct_vs_5d_avg": None,
                 }
             )
 
