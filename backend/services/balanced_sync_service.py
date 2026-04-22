@@ -328,6 +328,8 @@ def _icb_sector_display_name(flat: dict[str, Any]) -> str | None:
 
 def _extract_sector_flows_from_icb(
     rows: list[dict[str, Any]],
+    level_by_code: dict[str, int],
+    name_by_code: dict[str, str],
 ) -> tuple[list[dict[str, Any]], dict[str, float], list[dict[str, Any]]]:
     """
     - top9: 9 dòng ICB chi tiết (ngành con như FireAnt), không gộp bucket.
@@ -340,17 +342,33 @@ def _extract_sector_flows_from_icb(
         if not isinstance(item, dict):
             continue
         flat = _flatten_icb_row(item)
-        raw_name = _icb_sector_display_name(flat)
+        raw_code = flat.get("ICBCode") or flat.get("icbCode") or flat.get("industryCode")
+        code = str(raw_code).strip() if raw_code is not None else ""
+        if not code:
+            continue
+        # Chuẩn hoá về level 3: nếu row là level 4 thì quy về mã level 3 tiền tố.
+        level = level_by_code.get(code)
+        level3_code = code
+        if level != 3:
+            level3_code = ""
+            for i in range(len(code), 0, -1):
+                cand = code[:i]
+                if level_by_code.get(cand) == 3:
+                    level3_code = cand
+                    break
+            if not level3_code:
+                continue
+        raw_name = name_by_code.get(level3_code) or _icb_sector_display_name(flat)
         if raw_name is None:
             continue
         pmf = _icb_positive_money_flow(flat)
         day_pct = _icb_index_change_pct_day(flat)
-        bucket = sector_flow_bucket(str(raw_name))
-        code = flat.get("ICBCode") or flat.get("icbCode") or flat.get("industryCode")
+        # Chuẩn nhất: dùng đúng tên ngành ICB level 3 làm sector_group.
+        bucket = str(raw_name).strip()
         parsed.append(
             {
                 "raw_name": raw_name,
-                "icb_code": str(code).strip() if code is not None else None,
+                "icb_code": level3_code,
                 "bucket": bucket,
                 "pmf": pmf,
                 "day_pct": day_pct,
@@ -583,9 +601,28 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
         {k: v for k, v in per_sym.items() if v},
         BALANCED_DAILY_UNIVERSE,
     )
-    icb_rows = await fetch_icb_latest_index(token)
     icb_catalog = await fetch_icb_catalog(token)
-    top9, sector_pct_map, all_sectors = _extract_sector_flows_from_icb(icb_rows)
+    icb_rows = await fetch_icb_latest_index(token)
+    icb_level_by_code: dict[str, int] = {}
+    icb_name_by_code: dict[str, str] = {}
+    for item in icb_catalog:
+        code = item.get("industryCode") or item.get("icbCode")
+        name = item.get("name") or item.get("industryName")
+        level = item.get("level")
+        if code is None:
+            continue
+        code_s = str(code).strip()
+        if not code_s:
+            continue
+        if isinstance(level, (int, float)):
+            icb_level_by_code[code_s] = int(level)
+        if isinstance(name, str) and name.strip():
+            icb_name_by_code[code_s] = name.strip()
+    top9, sector_pct_map, all_sectors = _extract_sector_flows_from_icb(
+        icb_rows,
+        icb_level_by_code,
+        icb_name_by_code,
+    )
     prior_all_sectors = await _load_prior_all_sectors(db, t) if t is not None else []
     all_sectors_enriched, top9_5d, sector_pct_map_5d = _enrich_sector_flow_5d(all_sectors, prior_all_sectors)
     if top9_5d:
@@ -632,15 +669,28 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
         bucket = sym_sector.get(sym, "Khác")
         icb_code = sym_icb_code.get(sym)
         if icb_code:
-            bucket = icb_bucket_by_code.get(
-                icb_code,
-                sector_flow_bucket(icb_catalog_name_by_code.get(icb_code, bucket)),
-            )
+            # Hiển thị và map theo ngành level 3 để nhất quán toàn bộ pipeline.
+            level3_code = icb_code
+            if icb_level_by_code.get(level3_code) != 3:
+                for i in range(len(icb_code), 0, -1):
+                    cand = icb_code[:i]
+                    if icb_level_by_code.get(cand) == 3:
+                        level3_code = cand
+                        break
+            level3_name = icb_catalog_name_by_code.get(level3_code) or icb_name_by_code.get(level3_code)
+            bucket = icb_bucket_by_code.get(level3_code, (level3_name or bucket))
         sector_display = bucket
         if icb_code:
+            level3_code = icb_code
+            if icb_level_by_code.get(level3_code) != 3:
+                for i in range(len(icb_code), 0, -1):
+                    cand = icb_code[:i]
+                    if icb_level_by_code.get(cand) == 3:
+                        level3_code = cand
+                        break
             sector_display = icb_catalog_name_by_code.get(
-                icb_code,
-                icb_name_by_code.get(icb_code, sector_display),
+                level3_code,
+                icb_name_by_code.get(level3_code, sector_display),
             )
         sp = sector_pct_map.get(bucket)
         posts_recent = _serialize_posts_recent(pack.get("posts") or [], t)

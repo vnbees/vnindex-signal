@@ -31,6 +31,8 @@ _KEYWORD_SECTOR: list[tuple[str, str]] = [
     ("property", "Bất động sản"),
     ("cong nghe", "Công nghệ"),
     ("technology", "Công nghệ"),
+    ("phan mem", "Công nghệ"),
+    ("dien toan", "Công nghệ"),
     ("software", "Công nghệ"),
     ("ban le", "Bán lẻ"),
     ("retail", "Bán lẻ"),
