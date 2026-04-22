@@ -6,8 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from schemas.balanced import BalancedSnapshotResponse, BalancedSyncResponse
-from services.balanced_sync_service import load_snapshot_payload, run_balanced_sync
+from schemas.balanced import (
+    BalancedSectorFlow5DResponse,
+    BalancedSnapshotResponse,
+    BalancedSyncResponse,
+)
+from services.balanced_sync_service import (
+    load_sector_flow_5d_payload,
+    load_snapshot_payload,
+    run_balanced_sync,
+)
 from services.fireant_quote_service import require_fireant_token
 
 router = APIRouter(tags=["balanced"])
@@ -51,3 +59,26 @@ async def balanced_read_snapshot(
     if not payload:
         return BalancedSnapshotResponse(found=False, payload=None)
     return BalancedSnapshotResponse(found=True, payload=payload)
+
+
+@router.get(
+    "/api/v1/balanced/sector-flow-5d",
+    response_model=BalancedSectorFlow5DResponse,
+    summary="Dòng tiền ngành 5 phiên gần nhất (đọc từ snapshot DB)",
+)
+async def balanced_sector_flow_5d(
+    as_of_date: str | None = None,
+    sessions: int = 5,
+    db: AsyncSession = Depends(get_db),
+):
+    as_of: date | None = None
+    if as_of_date:
+        try:
+            as_of = date.fromisoformat(as_of_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="as_of_date must be YYYY-MM-DD") from None
+
+    payload = await load_sector_flow_5d_payload(db, as_of=as_of, sessions=sessions)
+    if not payload:
+        return BalancedSectorFlow5DResponse(found=False, as_of_date=None, sessions=[], sectors=[])
+    return BalancedSectorFlow5DResponse(**payload)

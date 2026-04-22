@@ -682,3 +682,115 @@ async def load_snapshot_payload(
     if isinstance(p, str):
         return json.loads(p)
     return dict(p)
+
+
+async def load_sector_flow_5d_payload(
+    db: AsyncSession,
+    as_of: date | None = None,
+    sessions: int = 5,
+) -> dict[str, Any] | None:
+    """
+    Return sector cash-flow time series for latest N sessions from stored snapshots.
+    This is intended for AI-side analysis without recomputing from a single-day snapshot.
+    """
+    if sessions < 2:
+        sessions = 2
+    if sessions > 20:
+        sessions = 20
+
+    if as_of is None:
+        anchor_row = (
+            await db.execute(
+                text("SELECT as_of_date FROM balanced_daily_snapshot ORDER BY as_of_date DESC LIMIT 1")
+            )
+        ).first()
+    else:
+        anchor_row = (
+            await db.execute(
+                text("SELECT as_of_date FROM balanced_daily_snapshot WHERE as_of_date = :d LIMIT 1"),
+                {"d": as_of},
+            )
+        ).first()
+    if not anchor_row:
+        return None
+
+    anchor_date: date = anchor_row[0]
+    rows = (
+        await db.execute(
+            text(
+                """
+                SELECT as_of_date, payload
+                FROM balanced_daily_snapshot
+                WHERE as_of_date <= :anchor_date
+                ORDER BY as_of_date DESC
+                LIMIT :lim
+                """
+            ),
+            {"anchor_date": anchor_date, "lim": sessions},
+        )
+    ).all()
+    if not rows:
+        return None
+
+    ordered = list(reversed(rows))
+    session_dates: list[str] = []
+    sector_map: dict[str, dict[str, Any]] = {}
+
+    for as_of_date, payload_raw in ordered:
+        session_dates.append(as_of_date.isoformat())
+        payload = payload_raw
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        all_sectors = payload.get("all_sectors")
+        if not isinstance(all_sectors, list):
+            continue
+
+        by_name: dict[str, dict[str, Any]] = {}
+        for item in all_sectors:
+            if not isinstance(item, dict):
+                continue
+            sector_name = str(item.get("sector") or "").strip()
+            if not sector_name:
+                continue
+            by_name[sector_name] = item
+            if sector_name not in sector_map:
+                sector_map[sector_name] = {
+                    "sector": sector_name,
+                    "sector_group": item.get("sector_group"),
+                    "icb_code": item.get("icb_code"),
+                    "points": [],
+                }
+
+        for sector_name, row in sector_map.items():
+            cur = by_name.get(sector_name)
+            if cur is None:
+                row["points"].append(
+                    {
+                        "date": as_of_date.isoformat(),
+                        "positive_money_flow_vnd": None,
+                        "positive_money_flow_pct_vs_5d_avg": None,
+                    }
+                )
+                continue
+            row["points"].append(
+                {
+                    "date": as_of_date.isoformat(),
+                    "positive_money_flow_vnd": _to_float_safe(cur.get("positive_money_flow_vnd")),
+                    "positive_money_flow_pct_vs_5d_avg": _to_float_safe(
+                        cur.get("positive_money_flow_pct_vs_5d_avg")
+                    ),
+                }
+            )
+
+    sectors = sorted(sector_map.values(), key=lambda x: x["sector"])
+    return {
+        "found": True,
+        "as_of_date": anchor_date.isoformat(),
+        "sessions": session_dates,
+        "sectors": sectors,
+    }

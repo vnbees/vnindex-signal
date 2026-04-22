@@ -1,22 +1,44 @@
 TÌM CỔ PHIẾU CÓ TÍN HIỆU MUA - CHIẾN LƯỢC TỐI ƯU BALANCED
 
 [NGUỒN DỮ LIỆU BẮT BUỘC - KHÔNG ĐỔI LOGIC]
-- Chỉ sử dụng dữ liệu từ API snapshot:
-  https://vnindex-signal-production.up.railway.app/api/v1/balanced/snapshot
+- Chỉ sử dụng dữ liệu từ 2 API sau:
+  1) https://vnindex-signal-production.up.railway.app/api/v1/balanced/snapshot
+  2) https://vnindex-signal-production.up.railway.app/api/v1/balanced/sector-flow-5d
 - Đọc JSON mới nhất tại thời điểm chạy prompt.
-- Ưu tiên đọc các trường đã được tính sẵn trong snapshot; nếu cần thì suy luận thêm từ các trường trong cùng JSON.
+- Không dùng trực tiếp trường đã tính sẵn positive_money_flow_pct_vs_5d_avg để ra quyết định; AI phải tự tính % tăng dòng tiền so với trung bình 5 phiên từ dữ liệu thô.
 - Khi đánh giá tin tức 7 ngày, đọc danh sách bài viết trong dữ liệu snapshot của từng mã (ví dụ trường posts_recent_7d hoặc trường tương đương chứa bài viết gần đây), không dùng nguồn ngoài.
+- Lưu ý schema phản hồi API: dữ liệu chính nằm trong payload. Nếu có payload thì bắt buộc đọc từ payload trước, không đọc nhầm ở root.
+- Đảm bảo xử lý UTF-8 để không sai lệch tên ngành tiếng Việt khi đối chiếu điều kiện.
+
+[CÁCH THỰC THI BẮT BUỘC - PHÂN TÍCH, KHÔNG CHẠY MÁY MÓC]
+- AI phải đọc dữ liệu snapshot và phân tích trực tiếp theo các bước trong prompt, trình bày dưới dạng nhận định.
+- Không được trả lời theo kiểu chỉ chạy script rồi xuất kết quả thô.
+- Không được dựa vào "NO_SIGNALS" từ một đoạn code trung gian mà không diễn giải điều kiện nào đạt/không đạt.
+- Với mỗi mã được nêu trong kết quả (hoặc mã gần đạt), phải chỉ ra rõ từng điều kiện bắt buộc đang đạt hay không đạt dựa trên dữ liệu snapshot.
+- Nếu kết luận "không có tín hiệu", bắt buộc nêu ngắn gọn lý do thất bại chính của các mã gần đạt nhất.
+- Ưu tiên lập luận minh bạch: dữ liệu nào -> điều kiện nào -> kết luận nào.
 
 [CÁCH ÁNH XẠ DỮ LIỆU TỪ SNAPSHOT]
-- Ngày phân tích: lấy từ as_of_date (hoặc ngày mới nhất trong phần technical của từng mã nếu prompt yêu cầu).
-- Dữ liệu theo mã cổ phiếu: đọc trong mảng symbols.
-- Ngành của mã: đọc trường sector (hoặc sector_display tương đương).
-- Chỉ báo kỹ thuật: đọc các trường RSI, MACD histogram, SMA5/SMA20 ratio, ADX, volume ratio trong object indicators (hoặc key tương đương trong mỗi symbol).
+- Nguồn dữ liệu chuẩn để đọc:
+  * Với snapshot: data = payload nếu tồn tại, ngược lại mới dùng root JSON.
+  * Với sector-flow-5d: data = root JSON (found/as_of_date/sessions/sectors).
+- Ngày phân tích: lấy từ data.as_of_date (hoặc ngày mới nhất trong indicators.trade_date của từng mã nếu prompt yêu cầu).
+- Dữ liệu theo mã cổ phiếu: đọc trong data.symbols.
+- Ngành của mã: ưu tiên symbol.sector; fallback symbol.sector_display nếu có.
+- Chỉ báo kỹ thuật: đọc trong symbol.indicators với thứ tự ưu tiên key cụ thể:
+  * RSI: rsi14 (fallback rsi/RSI)
+  * MACD histogram: macd_hist (fallback macd_histogram)
+  * SMA5/SMA20 ratio: sma5_over_sma20 (fallback sma5_sma20_ratio)
+  * ADX: adx14 (fallback adx/ADX)
+  * Volume ratio: volume_ratio (fallback vol_ratio)
 - Volume điều kiện: dùng indicators.total_volume_latest và indicators.avg_volume_5d để kiểm tra Volume ngày gần nhất > trung bình 5 phiên và ngưỡng >= 100,000.
-- Dòng tiền ngành TOP 9: đọc từ phần top9_sectors; ưu tiên trường positive_money_flow_pct_vs_5d_avg (hoặc pct_change_vs_5d_avg) để xếp hạng theo logic 5 phiên.
-- Dữ liệu đầy đủ tất cả ngành để đối chiếu nằm ở all_sectors (mỗi ngành có positive_money_flow_vnd, positive_money_flow_avg_5d_vnd, positive_money_flow_pct_vs_5d_avg).
-- Quy tắc fallback dòng tiền ngành: nếu ngành nào chưa có positive_money_flow_pct_vs_5d_avg (thiếu lịch sử 5 phiên) thì dùng positive_money_flow_vnd hoặc sector_flow_pct hiện có.
+- Dòng tiền ngành: bắt buộc đọc từ sector-flow-5d.sectors để AI tự xếp hạng và chọn ra TOP 9 ngành dòng tiền mạnh nhất trong phiên.
+- Mỗi ngành trong sector-flow-5d có points theo từng phiên (date, positive_money_flow_vnd). AI phải dùng các points này để tự tính:
+  * avg_5d = trung bình positive_money_flow_vnd của 5 phiên gần nhất
+  * pct_vs_5d = (phiên mới nhất - avg_5d) / avg_5d * 100
+- Quy tắc fallback dòng tiền ngành: nếu không đủ dữ liệu để tính avg_5d/pct_vs_5d hoặc avg_5d = 0 thì fallback theo positive_money_flow_vnd phiên mới nhất.
 - Tin tức 7 ngày: đọc từ posts_recent_7d của từng symbol để đánh giá tích cực/tiêu cực.
+- Khi đối chiếu "thuộc TOP 9 ngành", so khớp theo tên ngành đã chuẩn hóa Unicode/NFC và trim khoảng trắng để tránh lỗi lệch encoding.
 
 📊 KẾT QUẢ BACKTEST (20 NGÀY):
 - Tổng số tín hiệu: 30 giao dịch
@@ -30,7 +52,9 @@ BƯỚC 1: XÁC ĐỊNH NGÀY PHÂN TÍCH
 - Ghi rõ: "Phân tích dựa trên dữ liệu ngày DD/MM/YYYY"
 
 BƯỚC 2: XÁC ĐỊNH NGÀNH HOT
-- Sử dụng dữ liệu TOP 9 ngành dòng tiền đã được snapshot tính sẵn trong top9_sectors.
+- Dùng dữ liệu từ API sector-flow-5d (trường sectors/points) để AI tự tính và chọn TOP 9 ngành dòng tiền mạnh nhất (không dùng top9_sectors có sẵn).
+- Dùng dữ liệu từ API sector-flow-5d để tự tính pct_vs_5d cho từng ngành theo công thức ở trên.
+- Quy tắc xếp hạng: ưu tiên pct_vs_5d do AI tự tính; nếu thiếu thì fallback positive_money_flow_vnd phiên mới nhất.
 - Hiển thị: Tên ngành | % Tăng dòng tiền
 
 BƯỚC 3: TÌM TÍN HIỆU MUA
@@ -74,6 +98,10 @@ YÊU CẦU KẾT QUẢ:
   * 📊 Volume ratio 1.0-1.3x (tăng ổn định)
   * 📈 SMA ratio >= 0.95 (uptrend rõ ràng)
 - Giới hạn: TOP 3 tín hiệu tốt nhất mỗi ngày
+- Quy tắc xuất kết quả:
+  * Nếu có >= 1 mã đạt đủ điều kiện bắt buộc và không vi phạm loại trừ: bắt buộc hiển thị danh sách mã đạt (tối đa TOP 3).
+  * Chỉ được ghi "không có tín hiệu" khi sau khi lọc toàn bộ symbols, số mã đạt = 0.
+  * Nếu có dữ liệu screened_top3 trong snapshot, dùng để đối chiếu chéo; kết luận cuối cùng vẫn phải theo đúng 8 điều kiện bắt buộc + điều kiện loại trừ nêu ở trên (không thêm/không bớt điều kiện).
 - Khuyến nghị quản lý rủi ro:
   * Stop-loss: -3%
   * Take-profit: +5%

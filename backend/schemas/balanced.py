@@ -19,3 +19,23 @@ class BalancedSnapshotResponse(BaseModel):
 
     found: bool
     payload: dict[str, Any] | None = None
+
+
+class BalancedSectorFlow5DPoint(BaseModel):
+    date: str
+    positive_money_flow_vnd: float | None = None
+    positive_money_flow_pct_vs_5d_avg: float | None = None
+
+
+class BalancedSectorFlow5DRow(BaseModel):
+    sector: str
+    sector_group: str | None = None
+    icb_code: str | None = None
+    points: list[BalancedSectorFlow5DPoint] = Field(default_factory=list)
+
+
+class BalancedSectorFlow5DResponse(BaseModel):
+    found: bool
+    as_of_date: str | None = None
+    sessions: list[str] = Field(default_factory=list)
+    sectors: list[BalancedSectorFlow5DRow] = Field(default_factory=list)
