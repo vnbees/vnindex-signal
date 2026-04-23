@@ -202,6 +202,7 @@ async def run_daily_balanced_automation(
     *,
     dry_run: bool = False,
     force: bool = False,
+    use_mock_result: bool = False,
     prompt_file_path: str | None,
 ) -> DailyAutomationResponse:
     run_id = uuid.uuid4().hex
@@ -260,13 +261,24 @@ async def run_daily_balanced_automation(
                 "và danh sách #1/#2/#3 theo format '#<rank>. <SYMBOL> - <SECTOR>' kèm giá hiện tại VND."
             )
         full_prompt = _build_gemini_prompt(base_prompt, snapshot_payload, sector_data)
-        ai_text = await _run_gemini(full_prompt)
+        if use_mock_result:
+            today = date.today().strftime("%d/%m/%Y")
+            ai_text = (
+                f"TÍN HIỆU MUA BALANCED - NGÀY {today}\n"
+                f"Phân tích dựa trên dữ liệu ngày {today}\n\n"
+                "#1. TIG - BẤT ĐỘNG SẢN\n"
+                "Giá hiện tại 6,700 VND\n\n"
+                "#2. HPA - THỰC PHẨM VÀ ĐỒ UỐNG\n"
+                "Giá hiện tại 37,500 VND\n"
+            )
+        else:
+            ai_text = await _run_gemini(full_prompt)
         steps.append(
             AutomationStepResult(
                 name="run_gemini",
                 ok=True,
-                detail="Gemini generated analysis output",
-                payload={"chars": len(ai_text)},
+                detail="Gemini generated analysis output" if not use_mock_result else "Mock analysis output generated",
+                payload={"chars": len(ai_text), "mock_mode": use_mock_result},
             )
         )
 

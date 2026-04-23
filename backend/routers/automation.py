@@ -19,6 +19,7 @@ router = APIRouter(tags=["automation"])
 async def run_daily_automation(
     dry_run: bool = False,
     force: bool = False,
+    use_mock_result: bool = False,
     db: AsyncSession = Depends(get_db),
     x_automation_token: str | None = Header(default=None, alias="X-Automation-Token"),
 ):
@@ -35,6 +36,7 @@ async def run_daily_automation(
             db,
             dry_run=dry_run,
             force=force,
+            use_mock_result=use_mock_result,
             prompt_file_path=str(prompt_file) if prompt_file.exists() else None,
         )
     except ValueError as e:
