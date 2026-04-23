@@ -32,15 +32,15 @@ TÌM CỔ PHIẾU CÓ TÍN HIỆU MUA - CHIẾN LƯỢC TỐI ƯU BALANCED
   * ADX: adx14 (fallback adx/ADX)
   * Volume ratio: volume_ratio (fallback vol_ratio)
 - Volume điều kiện: dùng indicators.total_volume_latest và indicators.avg_volume_5d để kiểm tra Volume ngày gần nhất > trung bình 5 phiên và ngưỡng >= 100,000.
-- Dòng tiền ngành: bắt buộc đọc từ sector-flow-5d.sectors để AI tự xếp hạng và chọn ra TOP 9 ngành dòng tiền mạnh nhất trong phiên.
+- Dòng tiền ngành: bắt buộc đọc từ sector-flow-5d.sectors để AI tự tính chỉ số theo từng ngành (không cắt TOP 9); điều kiện lọc mã chỉ cần ngành của mã có dòng tiền dương theo quy tắc ở BƯỚC 3.
 - Mỗi ngành trong sector-flow-5d có points theo từng phiên (date, positive_money_flow_vnd). AI phải dùng các points này để tự tính:
   * avg_5d = trung bình positive_money_flow_vnd của 5 phiên gần nhất
   * pct_vs_5d = (phiên mới nhất - avg_5d) / avg_5d * 100
 - Quy tắc fallback dòng tiền ngành: nếu không đủ dữ liệu để tính avg_5d/pct_vs_5d hoặc avg_5d = 0 thì fallback theo positive_money_flow_vnd phiên mới nhất.
 - Tin tức 7 ngày: đọc từ posts_recent_7d của từng symbol để đánh giá tích cực/tiêu cực.
-- Khi đối chiếu "thuộc TOP 9 ngành", so khớp theo tên ngành đã chuẩn hóa Unicode/NFC và trim khoảng trắng để tránh lỗi lệch encoding.
+- Khi ghép mã với ngành trong sector-flow-5d, so khớp theo tên ngành đã chuẩn hóa Unicode/NFC và trim khoảng trắng để tránh lỗi lệch encoding.
 
-📊 KẾT QUẢ BACKTEST (20 NGÀY):
+📊 KẾT QUẢ BACKTEST (20 NGÀY) — THAM CHIẾU (rule lọc ngành đã đổi so với bản gốc dùng TOP 9):
 - Tổng số tín hiệu: 30 giao dịch
 - Số ngày có tín hiệu: 10/15 ngày (67%)
 - Tỷ lệ thắng: 66.7%
@@ -51,16 +51,15 @@ BƯỚC 1: XÁC ĐỊNH NGÀY PHÂN TÍCH
 - Lấy ngày giao dịch mới nhất có trong dữ liệu technical
 - Ghi rõ: "Phân tích dựa trên dữ liệu ngày DD/MM/YYYY"
 
-BƯỚC 2: XÁC ĐỊNH NGÀNH HOT
-- Dùng dữ liệu từ API sector-flow-5d (trường sectors/points) để AI tự tính và chọn TOP 9 ngành dòng tiền mạnh nhất (không dùng top9_sectors có sẵn).
-- Dùng dữ liệu từ API sector-flow-5d để tự tính pct_vs_5d cho từng ngành theo công thức ở trên.
-- Quy tắc xếp hạng: ưu tiên pct_vs_5d do AI tự tính; nếu thiếu thì fallback positive_money_flow_vnd phiên mới nhất.
-- Hiển thị: Tên ngành | % Tăng dòng tiền
+BƯỚC 2: ĐÁNH GIÁ DÒNG TIỀN NGÀNH (THAM CHIẾU)
+- Dùng dữ liệu từ API sector-flow-5d (trường sectors/points) để AI tự tính pct_vs_5d cho từng ngành theo công thức ở trên (không dùng top9_sectors có sẵn).
+- Quy tắc xếp hạng tham chiếu: ưu tiên pct_vs_5d do AI tự tính; nếu thiếu thì fallback positive_money_flow_vnd phiên mới nhất.
+- Trình bày bảng (hoặc tóm tắt) các ngành có liên quan tới universe đang xét, sắp xếp theo % giảm dần: Tên ngành | % Tăng dòng tiền (hoặc giá trị fallback nếu không tính được %).
 
 BƯỚC 3: TÌM TÍN HIỆU MUA
 Điều kiện BẮT BUỘC (tất cả phải thỏa mãn):
 1. RSI: 30-45 (vùng oversold đến trung tính)
-2. Thuộc 1 trong TOP 9 ngành dòng tiền mạnh nhất
+2. Dòng tiền ngành của mã dương: khi tính được pct_vs_5d theo sector-flow-5d thì yêu cầu pct_vs_5d > 0; nếu rơi vào fallback (không đủ points hoặc avg_5d = 0) thì dùng positive_money_flow_vnd phiên mới nhất của ngành đó và yêu cầu > 0.
 3. Volume ngày gần nhất > trung bình 5 phiên
 4. Volume ratio: 1.0-2.0x (tăng ổn định đến mạnh)
 5. Volume tối thiểu >= 100,000 cổ phiếu
@@ -77,9 +76,9 @@ BƯỚC 3: TÌM TÍN HIỆU MUA
 - Thuộc ngành: Bất động sản, Thực phẩm và đồ uống
 
 BƯỚC 4: XẾP HẠNG VÀ TRÌNH BÀY
-Sắp xếp theo thứ tự ưu tiên:
-1. RSI thấp nhất (gần 30 tốt hơn)
-2. % Tăng dòng tiền ngành cao nhất
+Sắp xếp các mã đã đạt đủ điều kiện bắt buộc theo thứ tự ưu tiên (so sánh lần lượt từ trên xuống):
+1. % Tăng dòng tiền ngành từ cao xuống thấp (cùng metric với điều kiện 2: ưu tiên pct_vs_5d; nếu mã đang dùng fallback thì so positive_money_flow_vnd phiên mới nhất của ngành, lớn hơn xếp trên).
+2. RSI thấp nhất (gần 30 tốt hơn)
 3. Volume ratio thấp nhất (gần 1.0 tốt hơn)
 4. MACD histogram dương lớn nhất
 5. Bonus ngành ưu tiên
