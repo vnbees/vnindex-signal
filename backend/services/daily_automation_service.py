@@ -25,6 +25,14 @@ class ParsedSignalText:
     buy_signals: list[BuySignalIn]
 
 
+@dataclass
+class ParsedGeminiJson:
+    title: str | None
+    reference_date: date
+    buy_signals: list[BuySignalIn]
+    raw_text: str
+
+
 def _first_non_empty_line(text: str) -> str | None:
     for line in text.splitlines():
         s = line.strip()
@@ -39,6 +47,18 @@ def _extract_reference_date(text: str) -> date:
         raise ValueError("Không trích xuất được reference_date")
     day_s, month_s, year_s = match.groups()
     return date(int(year_s), int(month_s), int(day_s))
+
+
+def _parse_reference_date_value(value: Any) -> date:
+    if isinstance(value, str):
+        s = value.strip()
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+            return date.fromisoformat(s)
+        m = re.search(r"(\d{2})/(\d{2})/(\d{4})", s)
+        if m:
+            dd, mm, yyyy = m.groups()
+            return date(int(yyyy), int(mm), int(dd))
+    raise ValueError("Không trích xuất được reference_date")
 
 
 def _to_number(value: str) -> float | None:
@@ -169,7 +189,38 @@ def _build_gemini_prompt(base_prompt: str, snapshot: dict[str, Any], sector_flow
         f"{snapshot_json}\n\n"
         "[DỮ LIỆU SECTOR FLOW 5D JSON]\n"
         f"{sector_json}\n\n"
-        "Hãy trả kết quả đúng format phân tích và danh sách TOP tín hiệu mua theo prompt."
+        "BẮT BUỘC trả về JSON object hợp lệ (không markdown, không text ngoài JSON) theo schema sau:\n"
+        "{\n"
+        '  "title": "string",\n'
+        '  "reference_date": "YYYY-MM-DD",\n'
+        '  "sector_flow_analysis": [\n'
+        "    {\n"
+        '      "sector": "string",\n'
+        '      "flow_today_vnd": number,\n'
+        '      "avg_5d_vnd": number,\n'
+        '      "pct_vs_5d": number\n'
+        "    }\n"
+        "  ],\n"
+        '  "selected_signals": [\n'
+        "    {\n"
+        '      "rank": number,\n'
+        '      "symbol": "AAA",\n'
+        '      "sector": "string|null",\n'
+        '      "price": number|null,\n'
+        '      "recommendation": "string|null",\n'
+        '      "why_selected": ["string", "..."]\n'
+        "    }\n"
+        "  ],\n"
+        '  "near_miss_signals": [\n'
+        "    {\n"
+        '      "symbol": "AAA",\n'
+        '      "sector": "string|null",\n'
+        '      "failed_conditions": ["string", "..."]\n'
+        "    }\n"
+        "  ],\n"
+        '  "analysis_notes": "string"\n'
+        "}\n"
+        "Ràng buộc: selected_signals tối đa 3 mã, symbol phải thuộc dữ liệu snapshot."
     )
 
 
@@ -269,7 +320,7 @@ async def _http_json(client: httpx.AsyncClient, method: str, url: str, **kwargs:
     return data
 
 
-async def _run_gemini(prompt: str) -> str:
+async def _run_gemini(prompt: str) -> dict[str, Any]:
     if not settings.google_gemini_api_key:
         raise RuntimeError("Missing GOOGLE_GEMINI_API_KEY")
     model = settings.gemini_model.strip() or "gemini-2.0-flash"
@@ -279,7 +330,7 @@ async def _run_gemini(prompt: str) -> str:
     )
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.2},
+        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
     }
     timeout = max(30, int(settings.automation_http_timeout_seconds))
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -299,7 +350,104 @@ async def _run_gemini(prompt: str) -> str:
     out = "\n".join(chunks).strip()
     if not out:
         raise RuntimeError("Gemini returned empty text")
-    return out
+    try:
+        obj = json.loads(out)
+    except Exception as e:
+        raise RuntimeError(f"Gemini JSON parse failed: {e}") from e
+    if not isinstance(obj, dict):
+        raise RuntimeError("Gemini response is not a JSON object")
+    return obj
+
+
+def _render_raw_text_from_json(
+    title: str,
+    ref_date: date,
+    sector_flow_rows: list[dict[str, Any]],
+    selected_rows: list[dict[str, Any]],
+    near_miss_rows: list[dict[str, Any]],
+    analysis_notes: str | None,
+) -> str:
+    lines: list[str] = [title, f"Phân tích dựa trên dữ liệu ngày {ref_date.strftime('%d/%m/%Y')}", ""]
+    lines.append("## Dòng tiền ngành phiên chạy vs trung bình 5 phiên")
+    for row in sector_flow_rows:
+        sector = str(row.get("sector") or "N/A")
+        flow_today = row.get("flow_today_vnd")
+        avg5 = row.get("avg_5d_vnd")
+        pct = row.get("pct_vs_5d")
+        lines.append(f"- {sector}: today={flow_today}, avg5={avg5}, pct_vs_5d={pct}")
+    lines.append("")
+    lines.append("## Cổ phiếu được chọn và lý do")
+    for idx, row in enumerate(selected_rows, start=1):
+        sym = str(row.get("symbol") or "").upper()
+        sec = row.get("sector")
+        rec = row.get("recommendation")
+        price = row.get("price")
+        why = row.get("why_selected") if isinstance(row.get("why_selected"), list) else []
+        lines.append(f"#{idx}. {sym}" + (f" - {sec}" if sec else ""))
+        lines.append(f"Khuyến nghị: {rec}" if rec else "Khuyến nghị: N/A")
+        lines.append(f"Giá hiện tại {price} VND" if price is not None else "Giá hiện tại N/A")
+        if why:
+            for reason in why:
+                lines.append(f"- {reason}")
+    lines.append("")
+    lines.append("## Cổ phiếu gần đạt điều kiện")
+    for row in near_miss_rows:
+        sym = str(row.get("symbol") or "").upper()
+        sec = row.get("sector")
+        fails = row.get("failed_conditions") if isinstance(row.get("failed_conditions"), list) else []
+        lines.append(f"- {sym}" + (f" ({sec})" if sec else ""))
+        for f in fails:
+            lines.append(f"  - {f}")
+    if analysis_notes:
+        lines.append("")
+        lines.append("## Ghi chú phân tích")
+        lines.append(analysis_notes)
+    return "\n".join(lines).strip()
+
+
+def _parse_gemini_json_output(obj: dict[str, Any], valid_symbols: set[str]) -> ParsedGeminiJson:
+    title = str(obj.get("title") or "").strip() or "TÍN HIỆU MUA BALANCED"
+    ref_date = _parse_reference_date_value(obj.get("reference_date"))
+    selected = obj.get("selected_signals") if isinstance(obj.get("selected_signals"), list) else []
+    buy_signals: list[BuySignalIn] = []
+    selected_rows: list[dict[str, Any]] = []
+    for row in selected:
+        if not isinstance(row, dict):
+            continue
+        sym = str(row.get("symbol") or "").strip().upper()
+        if not sym or (valid_symbols and sym not in valid_symbols):
+            continue
+        rank = row.get("rank")
+        price = row.get("price")
+        try:
+            price_val = float(price) if price is not None else None
+        except Exception:
+            price_val = None
+        signal = BuySignalIn(
+            rank=int(rank) if isinstance(rank, (int, float)) else None,
+            symbol=sym,
+            recommendation=str(row.get("recommendation")).strip() if row.get("recommendation") is not None else None,
+            sector=str(row.get("sector")).strip() if row.get("sector") is not None else None,
+            price=price_val,
+        )
+        buy_signals.append(signal)
+        selected_rows.append(row)
+        if len(buy_signals) >= 3:
+            break
+    if not buy_signals:
+        raise ValueError("Không tìm thấy buy_signals hợp lệ")
+    sector_flow_rows = obj.get("sector_flow_analysis") if isinstance(obj.get("sector_flow_analysis"), list) else []
+    near_miss_rows = obj.get("near_miss_signals") if isinstance(obj.get("near_miss_signals"), list) else []
+    analysis_notes = str(obj.get("analysis_notes")).strip() if obj.get("analysis_notes") is not None else None
+    raw_text = _render_raw_text_from_json(
+        title=title,
+        ref_date=ref_date,
+        sector_flow_rows=[x for x in sector_flow_rows if isinstance(x, dict)],
+        selected_rows=selected_rows,
+        near_miss_rows=[x for x in near_miss_rows if isinstance(x, dict)],
+        analysis_notes=analysis_notes,
+    )
+    return ParsedGeminiJson(title=title[:200], reference_date=ref_date, buy_signals=buy_signals, raw_text=raw_text)
 
 
 async def _already_ingested(db: AsyncSession, ref_date: date) -> bool:
@@ -377,29 +525,45 @@ async def run_daily_balanced_automation(
                 "và danh sách #1/#2/#3 theo format '#<rank>. <SYMBOL> - <SECTOR>' kèm giá hiện tại VND."
             )
         full_prompt = _build_gemini_prompt(base_prompt, snapshot_payload, sector_data)
+        valid_symbols = _extract_valid_symbols(snapshot_payload)
         if use_mock_result:
-            today = date.today().strftime("%d/%m/%Y")
-            ai_text = (
-                f"TÍN HIỆU MUA BALANCED - NGÀY {today}\n"
-                f"Phân tích dựa trên dữ liệu ngày {today}\n\n"
-                "#1. TIG - BẤT ĐỘNG SẢN\n"
-                "Giá hiện tại 6,700 VND\n\n"
-                "#2. HPA - THỰC PHẨM VÀ ĐỒ UỐNG\n"
-                "Giá hiện tại 37,500 VND\n"
-            )
+            today_iso = date.today().isoformat()
+            gemini_obj: dict[str, Any] = {
+                "title": f"TÍN HIỆU MUA BALANCED - NGÀY {date.today().strftime('%d/%m/%Y')}",
+                "reference_date": today_iso,
+                "sector_flow_analysis": [],
+                "selected_signals": [
+                    {
+                        "rank": 1,
+                        "symbol": "TIG" if "TIG" in valid_symbols else next(iter(valid_symbols), "VCB"),
+                        "sector": "Bất động sản",
+                        "price": 6700,
+                        "recommendation": "THEO DÕI MUA",
+                        "why_selected": ["Mock test"],
+                    }
+                ],
+                "near_miss_signals": [],
+                "analysis_notes": "Mock mode",
+            }
         else:
-            ai_text = await _run_gemini(full_prompt)
+            gemini_obj = await _run_gemini(full_prompt)
+        gemini_json_str = json.dumps(gemini_obj, ensure_ascii=False)
         steps.append(
             AutomationStepResult(
                 name="run_gemini",
                 ok=True,
                 detail="Gemini generated analysis output" if not use_mock_result else "Mock analysis output generated",
-                payload={"chars": len(ai_text), "mock_mode": use_mock_result},
+                payload={"chars": len(gemini_json_str), "mock_mode": use_mock_result},
             )
         )
 
-        valid_symbols = _extract_valid_symbols(snapshot_payload)
-        parsed = parse_signal_output_text(ai_text, valid_symbols=valid_symbols)
+        parsed_json = _parse_gemini_json_output(gemini_obj, valid_symbols=valid_symbols)
+        parsed = ParsedSignalText(
+            title=parsed_json.title,
+            reference_date=parsed_json.reference_date,
+            raw_text=parsed_json.raw_text,
+            buy_signals=parsed_json.buy_signals,
+        )
         steps.append(
             AutomationStepResult(
                 name="parse_output",
