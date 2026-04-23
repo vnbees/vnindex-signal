@@ -132,8 +132,10 @@ def parse_signal_output_text(text: str) -> ParsedSignalText:
 
 
 def _build_gemini_prompt(base_prompt: str, snapshot: dict[str, Any], sector_flow: dict[str, Any]) -> str:
-    snapshot_json = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))
-    sector_json = json.dumps(sector_flow, ensure_ascii=False, separators=(",", ":"))
+    compact_snapshot = _compact_snapshot_for_ai(snapshot)
+    compact_sector_flow = _compact_sector_flow_for_ai(sector_flow)
+    snapshot_json = json.dumps(compact_snapshot, ensure_ascii=False, separators=(",", ":"))
+    sector_json = json.dumps(compact_sector_flow, ensure_ascii=False, separators=(",", ":"))
     return (
         f"{base_prompt}\n\n"
         "[DỮ LIỆU SNAPSHOT JSON]\n"
@@ -142,6 +144,76 @@ def _build_gemini_prompt(base_prompt: str, snapshot: dict[str, Any], sector_flow
         f"{sector_json}\n\n"
         "Hãy trả kết quả đúng format phân tích và danh sách TOP tín hiệu mua theo prompt."
     )
+
+
+def _compact_snapshot_for_ai(snapshot: dict[str, Any]) -> dict[str, Any]:
+    payload = snapshot.get("payload") if isinstance(snapshot.get("payload"), dict) else snapshot
+    if not isinstance(payload, dict):
+        return {}
+    symbols = payload.get("symbols")
+    compact_symbols: list[dict[str, Any]] = []
+    if isinstance(symbols, list):
+        for item in symbols:
+            if not isinstance(item, dict):
+                continue
+            indicators = item.get("indicators") if isinstance(item.get("indicators"), dict) else {}
+            posts = item.get("posts_recent_7d") if isinstance(item.get("posts_recent_7d"), list) else []
+            compact_posts: list[dict[str, Any]] = []
+            for p in posts[:3]:
+                if isinstance(p, dict):
+                    compact_posts.append(
+                        {
+                            "title": p.get("title"),
+                            "summary": p.get("summary"),
+                            "published_at": p.get("published_at"),
+                        }
+                    )
+            compact_symbols.append(
+                {
+                    "symbol": item.get("symbol"),
+                    "sector": item.get("sector"),
+                    "indicators": {
+                        "trade_date": indicators.get("trade_date"),
+                        "price_close_vnd": indicators.get("price_close_vnd"),
+                        "rsi14": indicators.get("rsi14"),
+                        "macd_hist": indicators.get("macd_hist"),
+                        "sma5_over_sma20": indicators.get("sma5_over_sma20"),
+                        "adx14": indicators.get("adx14"),
+                        "volume_ratio": indicators.get("volume_ratio"),
+                        "total_volume_latest": indicators.get("total_volume_latest"),
+                        "avg_volume_5d": indicators.get("avg_volume_5d"),
+                    },
+                    "posts_recent_7d": compact_posts,
+                }
+            )
+    return {
+        "as_of_date": payload.get("as_of_date"),
+        "symbols": compact_symbols,
+    }
+
+
+def _compact_sector_flow_for_ai(sector_flow: dict[str, Any]) -> dict[str, Any]:
+    sectors = sector_flow.get("sectors")
+    compact: list[dict[str, Any]] = []
+    if isinstance(sectors, list):
+        for item in sectors:
+            if not isinstance(item, dict):
+                continue
+            points = item.get("points") if isinstance(item.get("points"), list) else []
+            compact.append(
+                {
+                    "sector": item.get("sector"),
+                    "points": [
+                        {
+                            "date": p.get("date"),
+                            "positive_money_flow_vnd": p.get("positive_money_flow_vnd"),
+                        }
+                        for p in points[-5:]
+                        if isinstance(p, dict)
+                    ],
+                }
+            )
+    return {"as_of_date": sector_flow.get("as_of_date"), "sessions": sector_flow.get("sessions"), "sectors": compact}
 
 
 async def _http_json(client: httpx.AsyncClient, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
