@@ -112,6 +112,29 @@ def _parse_buy_signals(text: str) -> list[BuySignalIn]:
         )
 
     if not signals:
+        # Fallback: parse any uppercase symbol line with nearby price.
+        symbol_candidates: dict[str, float | None] = {}
+        symbol_line_re = re.compile(r"\b([A-Z]{2,5})\b")
+        price_re = re.compile(r"([0-9][0-9\.,\s]{2,})\s*VND", re.IGNORECASE)
+        for line in lines:
+            found_syms = [m.group(1) for m in symbol_line_re.finditer(line)]
+            if not found_syms:
+                continue
+            px_match = price_re.search(line)
+            price_val = _to_number(px_match.group(1)) if px_match else None
+            for sym in found_syms:
+                if sym in {"VND", "TOP", "RSI", "MACD", "SMA", "ADX"}:
+                    continue
+                if sym not in symbol_candidates:
+                    symbol_candidates[sym] = price_val
+        rank = 1
+        for sym, px in symbol_candidates.items():
+            signals.append(BuySignalIn(rank=rank, symbol=sym, price=px))
+            rank += 1
+            if rank > 3:
+                break
+
+    if not signals:
         raise ValueError("Không tìm thấy buy_signals hợp lệ")
     return signals
 
