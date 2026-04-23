@@ -56,7 +56,7 @@ def _to_number(value: str) -> float | None:
         return None
 
 
-def _parse_buy_signals(text: str) -> list[BuySignalIn]:
+def _parse_buy_signals(text: str, valid_symbols: set[str] | None = None) -> list[BuySignalIn]:
     lines = text.splitlines()
     starts: list[tuple[int, int, str, str | None]] = []
     header_re = re.compile(r"^\s*#\s*(\d+)\.\s*([A-Z0-9]{1,16})(?:\s*-\s*(.+))?\s*$")
@@ -101,6 +101,8 @@ def _parse_buy_signals(text: str) -> list[BuySignalIn]:
             if price is not None:
                 break
 
+        if valid_symbols and symbol not in valid_symbols:
+            continue
         signals.append(
             BuySignalIn(
                 rank=rank,
@@ -125,6 +127,8 @@ def _parse_buy_signals(text: str) -> list[BuySignalIn]:
             for sym in found_syms:
                 if sym in {"VND", "TOP", "RSI", "MACD", "SMA", "ADX"}:
                     continue
+                if valid_symbols and sym not in valid_symbols:
+                    continue
                 if sym not in symbol_candidates:
                     symbol_candidates[sym] = price_val
         rank = 1
@@ -139,13 +143,13 @@ def _parse_buy_signals(text: str) -> list[BuySignalIn]:
     return signals
 
 
-def parse_signal_output_text(text: str) -> ParsedSignalText:
+def parse_signal_output_text(text: str, valid_symbols: set[str] | None = None) -> ParsedSignalText:
     raw_text = text
     if not raw_text or not raw_text.strip():
         raise ValueError("Không tìm thấy buy_signals hợp lệ")
     title = _first_non_empty_line(raw_text)
     ref_date = _extract_reference_date(raw_text)
-    signals = _parse_buy_signals(raw_text)
+    signals = _parse_buy_signals(raw_text, valid_symbols=valid_symbols)
     return ParsedSignalText(
         title=title[:200] if title else None,
         reference_date=ref_date,
@@ -213,6 +217,23 @@ def _compact_snapshot_for_ai(snapshot: dict[str, Any]) -> dict[str, Any]:
         "as_of_date": payload.get("as_of_date"),
         "symbols": compact_symbols,
     }
+
+
+def _extract_valid_symbols(snapshot: dict[str, Any]) -> set[str]:
+    payload = snapshot.get("payload") if isinstance(snapshot.get("payload"), dict) else snapshot
+    if not isinstance(payload, dict):
+        return set()
+    symbols = payload.get("symbols")
+    if not isinstance(symbols, list):
+        return set()
+    out: set[str] = set()
+    for item in symbols:
+        if not isinstance(item, dict):
+            continue
+        sym = str(item.get("symbol") or "").strip().upper()
+        if sym:
+            out.add(sym)
+    return out
 
 
 def _compact_sector_flow_for_ai(sector_flow: dict[str, Any]) -> dict[str, Any]:
@@ -377,7 +398,8 @@ async def run_daily_balanced_automation(
             )
         )
 
-        parsed = parse_signal_output_text(ai_text)
+        valid_symbols = _extract_valid_symbols(snapshot_payload)
+        parsed = parse_signal_output_text(ai_text, valid_symbols=valid_symbols)
         steps.append(
             AutomationStepResult(
                 name="parse_output",
