@@ -287,6 +287,37 @@ def _extract_valid_symbols(snapshot: dict[str, Any]) -> set[str]:
     return out
 
 
+def _fallback_signals_from_snapshot(snapshot: dict[str, Any], valid_symbols: set[str]) -> list[BuySignalIn]:
+    payload = snapshot.get("payload") if isinstance(snapshot.get("payload"), dict) else snapshot
+    if not isinstance(payload, dict):
+        return []
+    screened = payload.get("screened_top3")
+    if not isinstance(screened, list):
+        return []
+    out: list[BuySignalIn] = []
+    rank = 1
+    for row in screened:
+        if not isinstance(row, dict):
+            continue
+        sym = str(row.get("symbol") or "").strip().upper()
+        if not sym or (valid_symbols and sym not in valid_symbols):
+            continue
+        indicators = row.get("indicators") if isinstance(row.get("indicators"), dict) else {}
+        out.append(
+            BuySignalIn(
+                rank=rank,
+                symbol=sym,
+                sector=str(row.get("sector")).strip() if row.get("sector") is not None else None,
+                price=float(indicators.get("price_close_vnd")) if indicators.get("price_close_vnd") is not None else None,
+                recommendation="THEO DÕI MUA",
+            )
+        )
+        rank += 1
+        if rank > 3:
+            break
+    return out
+
+
 def _compact_sector_flow_for_ai(sector_flow: dict[str, Any]) -> dict[str, Any]:
     sectors = sector_flow.get("sectors")
     compact: list[dict[str, Any]] = []
@@ -444,7 +475,7 @@ def _render_raw_text_from_json(
     return "\n".join(lines).strip()
 
 
-def _parse_gemini_json_output(obj: dict[str, Any], valid_symbols: set[str]) -> ParsedGeminiJson:
+def _parse_gemini_json_output(obj: dict[str, Any], valid_symbols: set[str], snapshot_payload: dict[str, Any]) -> ParsedGeminiJson:
     title = str(obj.get("title") or "").strip() or "TÍN HIỆU MUA BALANCED"
     ref_date = _parse_reference_date_value(obj.get("reference_date"))
     selected = obj.get("selected_signals") if isinstance(obj.get("selected_signals"), list) else []
@@ -473,6 +504,8 @@ def _parse_gemini_json_output(obj: dict[str, Any], valid_symbols: set[str]) -> P
         selected_rows.append(row)
         if len(buy_signals) >= 3:
             break
+    if not buy_signals:
+        buy_signals = _fallback_signals_from_snapshot(snapshot_payload, valid_symbols)
     if not buy_signals:
         raise ValueError("Không tìm thấy buy_signals hợp lệ")
     sector_flow_rows = obj.get("sector_flow_analysis") if isinstance(obj.get("sector_flow_analysis"), list) else []
@@ -596,7 +629,11 @@ async def run_daily_balanced_automation(
             )
         )
 
-        parsed_json = _parse_gemini_json_output(gemini_obj, valid_symbols=valid_symbols)
+        parsed_json = _parse_gemini_json_output(
+            gemini_obj,
+            valid_symbols=valid_symbols,
+            snapshot_payload=snapshot_payload,
+        )
         parsed = ParsedSignalText(
             title=parsed_json.title,
             reference_date=parsed_json.reference_date,
