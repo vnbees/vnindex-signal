@@ -475,7 +475,74 @@ def _render_raw_text_from_json(
     return "\n".join(lines).strip()
 
 
-def _parse_gemini_json_output(obj: dict[str, Any], valid_symbols: set[str], snapshot_payload: dict[str, Any]) -> ParsedGeminiJson:
+def _build_default_sector_flow_rows(sector_flow_payload: dict[str, Any], top_n: int = 8) -> list[dict[str, Any]]:
+    sectors = sector_flow_payload.get("sectors")
+    if not isinstance(sectors, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for item in sectors:
+        if not isinstance(item, dict):
+            continue
+        points = item.get("points") if isinstance(item.get("points"), list) else []
+        vals = [float(p.get("positive_money_flow_vnd")) for p in points if isinstance(p, dict) and p.get("positive_money_flow_vnd") is not None]
+        if not vals:
+            continue
+        flow_today = vals[-1]
+        avg_5d = sum(vals[-5:]) / min(5, len(vals))
+        pct = ((flow_today - avg_5d) / avg_5d * 100.0) if avg_5d != 0 else None
+        rows.append(
+            {
+                "sector": item.get("sector"),
+                "flow_today_vnd": round(flow_today, 4),
+                "avg_5d_vnd": round(avg_5d, 4),
+                "pct_vs_5d": round(pct, 4) if pct is not None else None,
+            }
+        )
+    rows.sort(key=lambda x: x.get("pct_vs_5d") if x.get("pct_vs_5d") is not None else -999999, reverse=True)
+    return rows[:top_n]
+
+
+def _build_default_near_miss(snapshot_payload: dict[str, Any], selected_symbols: set[str], top_n: int = 5) -> list[dict[str, Any]]:
+    payload = snapshot_payload.get("payload") if isinstance(snapshot_payload.get("payload"), dict) else snapshot_payload
+    if not isinstance(payload, dict):
+        return []
+    symbols = payload.get("symbols")
+    if not isinstance(symbols, list):
+        return []
+    candidates: list[tuple[int, dict[str, Any]]] = []
+    for item in symbols:
+        if not isinstance(item, dict):
+            continue
+        symbol = str(item.get("symbol") or "").strip().upper()
+        if not symbol or symbol in selected_symbols:
+            continue
+        ind = item.get("indicators") if isinstance(item.get("indicators"), dict) else {}
+        sector_flow_pct = item.get("sector_flow_pct")
+        checks = {
+            "RSI 30-45": ind.get("rsi14") is not None and 30 <= float(ind.get("rsi14")) <= 45,
+            "Dòng tiền ngành > 0": sector_flow_pct is not None and float(sector_flow_pct) > 0,
+            "Volume > TB5": ind.get("total_volume_latest") is not None and ind.get("avg_volume_5d") is not None and float(ind.get("total_volume_latest")) > float(ind.get("avg_volume_5d")),
+            "Volume ratio 1.0-2.0": ind.get("volume_ratio") is not None and 1.0 <= float(ind.get("volume_ratio")) <= 2.0,
+            "Volume >=100k": ind.get("total_volume_latest") is not None and float(ind.get("total_volume_latest")) >= 100000,
+            "MACD > 0": ind.get("macd_hist") is not None and float(ind.get("macd_hist")) > 0,
+            "SMA5/SMA20 >= 0.92": ind.get("sma5_over_sma20") is not None and float(ind.get("sma5_over_sma20")) >= 0.92,
+            "ADX >= 15": ind.get("adx14") is not None and float(ind.get("adx14")) >= 15,
+        }
+        passed = sum(1 for v in checks.values() if v)
+        if passed >= 8:
+            continue
+        failed = [k for k, v in checks.items() if not v]
+        candidates.append((passed, {"symbol": symbol, "sector": item.get("sector"), "failed_conditions": failed[:4]}))
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return [row for _, row in candidates[:top_n]]
+
+
+def _parse_gemini_json_output(
+    obj: dict[str, Any],
+    valid_symbols: set[str],
+    snapshot_payload: dict[str, Any],
+    sector_flow_payload: dict[str, Any],
+) -> ParsedGeminiJson:
     title = str(obj.get("title") or "").strip() or "TÍN HIỆU MUA BALANCED"
     ref_date = _parse_reference_date_value(obj.get("reference_date"))
     selected = obj.get("selected_signals") if isinstance(obj.get("selected_signals"), list) else []
@@ -510,6 +577,10 @@ def _parse_gemini_json_output(obj: dict[str, Any], valid_symbols: set[str], snap
         raise ValueError("Không tìm thấy buy_signals hợp lệ")
     sector_flow_rows = obj.get("sector_flow_analysis") if isinstance(obj.get("sector_flow_analysis"), list) else []
     near_miss_rows = obj.get("near_miss_signals") if isinstance(obj.get("near_miss_signals"), list) else []
+    if not sector_flow_rows:
+        sector_flow_rows = _build_default_sector_flow_rows(sector_flow_payload)
+    if not near_miss_rows:
+        near_miss_rows = _build_default_near_miss(snapshot_payload, selected_symbols={s.symbol for s in buy_signals})
     analysis_notes = str(obj.get("analysis_notes")).strip() if obj.get("analysis_notes") is not None else None
     raw_text = _render_raw_text_from_json(
         title=title,
@@ -633,6 +704,7 @@ async def run_daily_balanced_automation(
             gemini_obj,
             valid_symbols=valid_symbols,
             snapshot_payload=snapshot_payload,
+            sector_flow_payload=sector_data,
         )
         parsed = ParsedSignalText(
             title=parsed_json.title,
