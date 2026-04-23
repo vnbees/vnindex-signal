@@ -330,7 +330,11 @@ async def _run_gemini(prompt: str) -> dict[str, Any]:
     )
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
+        "generationConfig": {
+            "temperature": 0.05,
+            "responseMimeType": "application/json",
+            "maxOutputTokens": 1800,
+        },
     }
     timeout = max(30, int(settings.automation_http_timeout_seconds))
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -352,8 +356,43 @@ async def _run_gemini(prompt: str) -> dict[str, Any]:
         raise RuntimeError("Gemini returned empty text")
     try:
         obj = json.loads(out)
-    except Exception as e:
-        raise RuntimeError(f"Gemini JSON parse failed: {e}") from e
+    except Exception:
+        repair_payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": (
+                                "Convert the following malformed JSON-like text into VALID JSON object only. "
+                                "Do not add markdown.\n\n"
+                                f"{out}"
+                            )
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.0,
+                "responseMimeType": "application/json",
+                "maxOutputTokens": 1800,
+            },
+        }
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            repaired_data = await _http_json(client, "POST", url, json=repair_payload)
+        repaired_candidates = repaired_data.get("candidates")
+        if not isinstance(repaired_candidates, list) or not repaired_candidates:
+            raise RuntimeError("Gemini JSON repair failed: no candidates")
+        repaired_content = repaired_candidates[0].get("content") if isinstance(repaired_candidates[0], dict) else None
+        repaired_parts = repaired_content.get("parts") if isinstance(repaired_content, dict) else None
+        repaired_text = ""
+        if isinstance(repaired_parts, list):
+            repaired_text = "\n".join(
+                [p.get("text") for p in repaired_parts if isinstance(p, dict) and isinstance(p.get("text"), str)]
+            ).strip()
+        try:
+            obj = json.loads(repaired_text)
+        except Exception as e:
+            raise RuntimeError(f"Gemini JSON parse failed: {e}") from e
     if not isinstance(obj, dict):
         raise RuntimeError("Gemini response is not a JSON object")
     return obj
