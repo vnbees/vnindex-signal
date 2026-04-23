@@ -1,0 +1,29 @@
+from datetime import date
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict
+
+from schemas.signal_entry import BuySignalIn
+
+
+class AutomationStepResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    ok: bool
+    detail: str | None = None
+    payload: dict[str, Any] | None = None
+
+
+class DailyAutomationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool
+    run_id: str
+    skipped: bool = False
+    reason: str | None = None
+    reference_date: date | None = None
+    title: str | None = None
+    buy_signals: list[BuySignalIn] = []
+    raw_text_preview: str | None = None
+    steps: list[AutomationStepResult]

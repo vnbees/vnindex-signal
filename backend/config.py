@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     rate_limit_get: str = "60/minute"
     rate_limit_post: str = "10/minute"
     cors_origins: list[str] = ["http://localhost:3000"]
+    automation_token: str | None = None
+    automation_base_url: str = "https://vnindex-signal-production.up.railway.app"
+    google_gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.0-flash"
+    automation_http_timeout_seconds: int = 120
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

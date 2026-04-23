@@ -67,12 +67,6 @@ docker compose up -d
 # 3. Chờ postgres healthy, chạy migration
 docker compose exec backend alembic upgrade head
 
-# (Tuỳ chọn) Trang /admin/feedback: tạo API key, ghi vào .env ở root repo rồi restart frontend
-# cp .env.example .env
-# docker compose exec backend python scripts/create_api_key.py --label "admin-feedback"
-# echo 'ADMIN_API_KEY=<dán_raw_key_vừa_in>' >> .env
-# docker compose up -d --build frontend
-
 # 4. Seed trading calendar (2015–2027)
 docker compose exec backend python scripts/seed_trading_calendar.py
 
@@ -204,6 +198,11 @@ Vào Railway Dashboard → service `backend` → tab **Variables**, thêm:
 | `API_SECRET_KEY` | Chuỗi random dài ≥32 ký tự |
 | `PORT` | `8000` |
 | `CORS_ORIGINS` | `["https://<frontend-domain>.railway.app"]` |
+| `AUTOMATION_TOKEN` | Secret token để gọi endpoint automation (header `X-Automation-Token`) |
+| `AUTOMATION_BASE_URL` | `https://<backend-domain>.railway.app` |
+| `GOOGLE_GEMINI_API_KEY` | API key Gemini (không commit vào repo) |
+| `GEMINI_MODEL` | `gemini-2.0-flash` |
+| `AUTOMATION_HTTP_TIMEOUT_SECONDS` | `120` |
 
 ### Bước 5 — Deploy frontend
 
@@ -227,6 +226,29 @@ curl https://<backend-domain>.railway.app/api/v1/health
 
 # Mở frontend
 open https://<frontend-domain>.railway.app
+```
+
+### Bước 7 — Railway Cron Job (daily 16:30)
+
+Tạo Cron Job trong Railway Dashboard để gọi endpoint:
+
+- URL: `https://<backend-domain>.railway.app/api/v1/automation/daily-balanced-run`
+- Method: `POST`
+- Schedule: `30 9 * * 1-5` (UTC, tương ứng 16:30 VN)
+- Header: `X-Automation-Token: <AUTOMATION_TOKEN>`
+
+Manual trigger để test:
+
+```bash
+curl -X POST "https://<backend-domain>.railway.app/api/v1/automation/daily-balanced-run?dry_run=true" \
+  -H "X-Automation-Token: <AUTOMATION_TOKEN>"
+```
+
+Sau khi dry-run ổn, chạy thật:
+
+```bash
+curl -X POST "https://<backend-domain>.railway.app/api/v1/automation/daily-balanced-run" \
+  -H "X-Automation-Token: <AUTOMATION_TOKEN>"
 ```
 
 > Railway free tier: 500 giờ CPU/tháng cho 2 services, PostgreSQL 1GB. Đủ cho workload 1 run/ngày.
@@ -421,15 +443,16 @@ Server tự động:
 | `GET` | `/api/v1/stats/pnl?days=60` | Thống kê PnL tổng hợp |
 | `GET` | `/api/v1/stats/accuracy` | Win rate theo recommendation |
 | `GET` | `/api/v1/export/csv?from=2026-01-01` | Export CSV toàn bộ tín hiệu |
+| `POST` | `/api/v1/automation/daily-balanced-run` | Chạy pipeline tự động (bảo vệ bằng `X-Automation-Token`) |
 
 ### Feedback (góp ý người dùng)
 
 | Method | Path | Mô tả |
 |--------|------|-------|
 | `POST` | `/api/v1/feedback` | Gửi góp ý (JSON: `message`, `page_url`, optional `name`, `contact`). Public. |
-| `GET` | `/api/v1/admin/feedback?limit=200&offset=0` | Danh sách góp ý mới nhất (yêu cầu `Authorization: Bearer <API_KEY>`). |
+| `GET` | `/api/v1/admin/feedback?limit=200&offset=0` | Danh sách góp ý mới nhất (public; nên bảo vệ bằng reverse proxy/firewall nếu deploy). |
 
-Trang xem trên website: `/admin/feedback` — đặt `ADMIN_API_KEY` trong file `.env` ở **root repo** (Docker Compose truyền vào container frontend; giá trị là raw key in ra một lần từ `scripts/create_api_key.py`). Backend trong Compose tự chạy `alembic upgrade head` khi start nên bảng `feedback` được tạo khi cần.
+Trang xem trên website: `/admin/feedback`. Backend trong Compose tự chạy `alembic upgrade head` khi start nên bảng `feedback` được tạo khi cần.
 
 ### Giá trị hợp lệ
 

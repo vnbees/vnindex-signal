@@ -1,0 +1,349 @@
+from __future__ import annotations
+
+import json
+import re
+import uuid
+from dataclasses import dataclass
+from datetime import date
+from typing import Any
+
+import httpx
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from config import settings
+from models.signal_entry import SignalEntry
+from schemas.automation import AutomationStepResult, DailyAutomationResponse
+from schemas.signal_entry import BuySignalIn
+
+
+@dataclass
+class ParsedSignalText:
+    title: str | None
+    reference_date: date
+    raw_text: str
+    buy_signals: list[BuySignalIn]
+
+
+def _first_non_empty_line(text: str) -> str | None:
+    for line in text.splitlines():
+        s = line.strip()
+        if s:
+            return s
+    return None
+
+
+def _extract_reference_date(text: str) -> date:
+    match = re.search(r"NGÀY\s+(\d{2})/(\d{2})/(\d{4})", text, re.IGNORECASE)
+    if not match:
+        raise ValueError("Không trích xuất được reference_date")
+    day_s, month_s, year_s = match.groups()
+    return date(int(year_s), int(month_s), int(day_s))
+
+
+def _to_number(value: str) -> float | None:
+    raw = value.strip().replace(" ", "")
+    if not raw:
+        return None
+    # Accept forms like 10,950 and 10.950 and 10,950.5
+    if "," in raw and "." in raw:
+        raw = raw.replace(",", "")
+    elif "," in raw and "." not in raw:
+        raw = raw.replace(",", "")
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def _parse_buy_signals(text: str) -> list[BuySignalIn]:
+    lines = text.splitlines()
+    starts: list[tuple[int, int, str, str | None]] = []
+    header_re = re.compile(r"^\s*#\s*(\d+)\.\s*([A-Z0-9]{1,16})(?:\s*-\s*(.+))?\s*$")
+    for i, line in enumerate(lines):
+        m = header_re.match(line.strip())
+        if not m:
+            continue
+        rank = int(m.group(1))
+        symbol = m.group(2).upper()
+        sector_raw = m.group(3).strip() if m.group(3) else None
+        if sector_raw:
+            sector_raw = sector_raw.replace("⭐", "").strip()
+        starts.append((i, rank, symbol, sector_raw))
+
+    signals: list[BuySignalIn] = []
+    for idx, (start_line, rank, symbol, sector_from_header) in enumerate(starts):
+        end_line = starts[idx + 1][0] if idx + 1 < len(starts) else len(lines)
+        block = "\n".join(lines[start_line:end_line])
+
+        recommendation = None
+        rec_match = re.search(r"Khuyến nghị\s*[:\-]\s*(.+)", block, re.IGNORECASE)
+        if rec_match:
+            recommendation = rec_match.group(1).strip()[:200]
+
+        sector = sector_from_header
+        if not sector:
+            sector_match = re.search(r"Ngành\s*[:\-]\s*(.+)", block, re.IGNORECASE)
+            if sector_match:
+                sector = sector_match.group(1).strip()[:200]
+
+        price = None
+        price_patterns = [
+            r"Giá hiện tại\s*([0-9][0-9\.,\s]*)\s*VND",
+            r"Giá\s*\(VND\)\s*[:\-]?\s*([0-9][0-9\.,\s]*)",
+            r"Giá\s*[:\-]\s*([0-9][0-9\.,\s]*)\s*VND",
+        ]
+        for patt in price_patterns:
+            m = re.search(patt, block, re.IGNORECASE)
+            if not m:
+                continue
+            price = _to_number(m.group(1))
+            if price is not None:
+                break
+
+        signals.append(
+            BuySignalIn(
+                rank=rank,
+                symbol=symbol,
+                recommendation=recommendation,
+                sector=sector,
+                price=price,
+            )
+        )
+
+    if not signals:
+        raise ValueError("Không tìm thấy buy_signals hợp lệ")
+    return signals
+
+
+def parse_signal_output_text(text: str) -> ParsedSignalText:
+    raw_text = text
+    if not raw_text or not raw_text.strip():
+        raise ValueError("Không tìm thấy buy_signals hợp lệ")
+    title = _first_non_empty_line(raw_text)
+    ref_date = _extract_reference_date(raw_text)
+    signals = _parse_buy_signals(raw_text)
+    return ParsedSignalText(
+        title=title[:200] if title else None,
+        reference_date=ref_date,
+        raw_text=raw_text,
+        buy_signals=signals,
+    )
+
+
+def _build_gemini_prompt(base_prompt: str, snapshot: dict[str, Any], sector_flow: dict[str, Any]) -> str:
+    snapshot_json = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))
+    sector_json = json.dumps(sector_flow, ensure_ascii=False, separators=(",", ":"))
+    return (
+        f"{base_prompt}\n\n"
+        "[DỮ LIỆU SNAPSHOT JSON]\n"
+        f"{snapshot_json}\n\n"
+        "[DỮ LIỆU SECTOR FLOW 5D JSON]\n"
+        f"{sector_json}\n\n"
+        "Hãy trả kết quả đúng format phân tích và danh sách TOP tín hiệu mua theo prompt."
+    )
+
+
+async def _http_json(client: httpx.AsyncClient, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+    response = await client.request(method, url, **kwargs)
+    response.raise_for_status()
+    data = response.json()
+    if not isinstance(data, dict):
+        raise ValueError(f"Unexpected JSON payload from {url}")
+    return data
+
+
+async def _run_gemini(prompt: str) -> str:
+    if not settings.google_gemini_api_key:
+        raise RuntimeError("Missing GOOGLE_GEMINI_API_KEY")
+    model = settings.gemini_model.strip() or "gemini-2.0-flash"
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        f"?key={settings.google_gemini_api_key}"
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2},
+    }
+    timeout = max(30, int(settings.automation_http_timeout_seconds))
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        data = await _http_json(client, "POST", url, json=payload)
+
+    candidates = data.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        raise RuntimeError("Gemini response has no candidates")
+    content = candidates[0].get("content") if isinstance(candidates[0], dict) else None
+    parts = content.get("parts") if isinstance(content, dict) else None
+    if not isinstance(parts, list):
+        raise RuntimeError("Gemini response has invalid content parts")
+    chunks: list[str] = []
+    for part in parts:
+        if isinstance(part, dict) and isinstance(part.get("text"), str):
+            chunks.append(part["text"])
+    out = "\n".join(chunks).strip()
+    if not out:
+        raise RuntimeError("Gemini returned empty text")
+    return out
+
+
+async def _already_ingested(db: AsyncSession, ref_date: date) -> bool:
+    q = select(SignalEntry.id).where(
+        SignalEntry.reference_date == ref_date,
+        SignalEntry.deleted_at.is_(None),
+        SignalEntry.data_extracted.is_(True),
+        text("payload->>'source' = 'automation-daily-gemini'"),
+    )
+    row = (await db.execute(q)).first()
+    return row is not None
+
+
+async def run_daily_balanced_automation(
+    db: AsyncSession,
+    *,
+    dry_run: bool = False,
+    force: bool = False,
+    prompt_file_path: str | None,
+) -> DailyAutomationResponse:
+    run_id = uuid.uuid4().hex
+    steps: list[AutomationStepResult] = []
+    base_url = settings.automation_base_url.rstrip("/")
+    timeout = max(30, int(settings.automation_http_timeout_seconds))
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        refresh_url = f"{base_url}/api/v1/newfeeds/refresh-prices"
+        refresh_data = await _http_json(client, "GET", refresh_url)
+        steps.append(
+            AutomationStepResult(
+                name="refresh_prices",
+                ok=True,
+                detail="Price refresh completed",
+                payload={"total": refresh_data.get("total")},
+            )
+        )
+
+        sync_url = f"{base_url}/api/v1/balanced/sync"
+        sync_data = await _http_json(client, "GET", sync_url)
+        steps.append(
+            AutomationStepResult(
+                name="balanced_sync",
+                ok=True,
+                detail="Balanced sync completed",
+                payload={
+                    "as_of_date": sync_data.get("as_of_date"),
+                    "symbols_ok": sync_data.get("symbols_ok"),
+                },
+            )
+        )
+
+        snapshot_url = f"{base_url}/api/v1/balanced/snapshot"
+        snapshot_data = await _http_json(client, "GET", snapshot_url)
+        snapshot_payload = snapshot_data.get("payload") if isinstance(snapshot_data.get("payload"), dict) else snapshot_data
+
+        sector_url = f"{base_url}/api/v1/balanced/sector-flow-5d"
+        sector_data = await _http_json(client, "GET", sector_url)
+        steps.append(
+            AutomationStepResult(
+                name="load_balanced_data",
+                ok=True,
+                detail="Loaded snapshot + sector flow",
+                payload={"snapshot_found": bool(snapshot_data.get("found")), "sector_found": bool(sector_data.get("found"))},
+            )
+        )
+
+        if prompt_file_path:
+            with open(prompt_file_path, "r", encoding="utf-8") as f:
+                base_prompt = f.read()
+        else:
+            base_prompt = (
+                "Tìm TOP tín hiệu mua BALANCED theo dữ liệu snapshot và sector-flow-5d. "
+                "Bắt buộc xuất tiêu đề có mẫu 'TÍN HIỆU MUA BALANCED - NGÀY dd/mm/yyyy' "
+                "và danh sách #1/#2/#3 theo format '#<rank>. <SYMBOL> - <SECTOR>' kèm giá hiện tại VND."
+            )
+        full_prompt = _build_gemini_prompt(base_prompt, snapshot_payload, sector_data)
+        ai_text = await _run_gemini(full_prompt)
+        steps.append(
+            AutomationStepResult(
+                name="run_gemini",
+                ok=True,
+                detail="Gemini generated analysis output",
+                payload={"chars": len(ai_text)},
+            )
+        )
+
+        parsed = parse_signal_output_text(ai_text)
+        steps.append(
+            AutomationStepResult(
+                name="parse_output",
+                ok=True,
+                detail="Parsed AI output into ingest payload",
+                payload={"reference_date": parsed.reference_date.isoformat(), "buy_signal_count": len(parsed.buy_signals)},
+            )
+        )
+
+        if not force and await _already_ingested(db, parsed.reference_date):
+            return DailyAutomationResponse(
+                ok=True,
+                run_id=run_id,
+                skipped=True,
+                reason=f"Entry for {parsed.reference_date.isoformat()} already ingested",
+                reference_date=parsed.reference_date,
+                title=parsed.title,
+                buy_signals=parsed.buy_signals,
+                raw_text_preview=parsed.raw_text[:500],
+                steps=steps,
+            )
+
+        if dry_run:
+            return DailyAutomationResponse(
+                ok=True,
+                run_id=run_id,
+                skipped=True,
+                reason="dry_run=true, skip ingest step",
+                reference_date=parsed.reference_date,
+                title=parsed.title,
+                buy_signals=parsed.buy_signals,
+                raw_text_preview=parsed.raw_text[:500],
+                steps=steps,
+            )
+
+        ingest_url = f"{base_url}/api/v1/admin/signal-entries/ingest-agent"
+        ingest_payload = {
+            "title": parsed.title,
+            "reference_date": parsed.reference_date.isoformat(),
+            "raw_text": parsed.raw_text,
+            "buy_signals": [item.model_dump(mode="json") for item in parsed.buy_signals],
+        }
+        ingest_data = await _http_json(client, "POST", ingest_url, json=ingest_payload)
+        created_id = ingest_data.get("id")
+
+    if created_id is not None:
+        row = await db.get(SignalEntry, created_id)
+        if row and isinstance(row.payload, dict):
+            new_payload = dict(row.payload)
+            new_payload["source"] = "automation-daily-gemini"
+            meta = new_payload.get("meta")
+            if not isinstance(meta, dict):
+                meta = {}
+            meta["run_id"] = run_id
+            new_payload["meta"] = meta
+            row.payload = new_payload
+            await db.commit()
+
+    steps.append(
+        AutomationStepResult(
+            name="ingest_entry",
+            ok=True,
+            detail="Ingested parsed result into signal entries",
+            payload={"entry_id": created_id},
+        )
+    )
+
+    return DailyAutomationResponse(
+        ok=True,
+        run_id=run_id,
+        reference_date=parsed.reference_date,
+        title=parsed.title,
+        buy_signals=parsed.buy_signals,
+        raw_text_preview=parsed.raw_text[:500],
+        steps=steps,
+    )

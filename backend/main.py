@@ -6,7 +6,17 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from config import settings
 from database import AsyncSessionLocal
-from routers import health, signals, price_updates, stats, export, feedback, balanced_data
+from routers import (
+    automation,
+    balanced_data,
+    export,
+    feedback,
+    health,
+    price_updates,
+    signal_entries,
+    signals,
+    stats,
+)
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -34,6 +44,8 @@ app.include_router(stats.router)
 app.include_router(export.router)
 app.include_router(feedback.router)
 app.include_router(balanced_data.router)
+app.include_router(signal_entries.router)
+app.include_router(automation.router)
 
 @app.on_event("startup")
 async def ensure_feedback_table_exists():
