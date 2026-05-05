@@ -8,7 +8,7 @@ from datetime import date
 from typing import Any
 
 import httpx
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
@@ -155,8 +155,6 @@ def _parse_buy_signals(text: str, valid_symbols: set[str] | None = None) -> list
         for sym, px in symbol_candidates.items():
             signals.append(BuySignalIn(rank=rank, symbol=sym, price=px))
             rank += 1
-            if rank > 3:
-                break
 
     if not signals:
         raise ValueError("Không tìm thấy buy_signals hợp lệ")
@@ -220,7 +218,7 @@ def _build_gemini_prompt(base_prompt: str, snapshot: dict[str, Any], sector_flow
         "  ],\n"
         '  "analysis_notes": "string"\n'
         "}\n"
-        "Ràng buộc: selected_signals tối đa 3 mã, symbol phải thuộc dữ liệu snapshot."
+        "Ràng buộc: selected_signals không giới hạn số lượng, symbol phải thuộc dữ liệu snapshot."
     )
 
 
@@ -313,8 +311,6 @@ def _fallback_signals_from_snapshot(snapshot: dict[str, Any], valid_symbols: set
             )
         )
         rank += 1
-        if rank > 3:
-            break
     return out
 
 
@@ -566,11 +562,12 @@ def _parse_gemini_json_output(
             recommendation=str(row.get("recommendation")).strip() if row.get("recommendation") is not None else None,
             sector=str(row.get("sector")).strip() if row.get("sector") is not None else None,
             price=price_val,
+            why_selected=[str(x).strip() for x in row.get("why_selected", []) if str(x).strip()]
+            if isinstance(row.get("why_selected"), list)
+            else None,
         )
         buy_signals.append(signal)
         selected_rows.append(row)
-        if len(buy_signals) >= 3:
-            break
     if not buy_signals:
         buy_signals = _fallback_signals_from_snapshot(snapshot_payload, valid_symbols)
     if not buy_signals:
@@ -594,11 +591,16 @@ def _parse_gemini_json_output(
 
 
 async def _already_ingested(db: AsyncSession, ref_date: date) -> bool:
+    """Any published newsfeed row for this reference_date counts as ingested.
+
+    Rows are created by /ingest-agent with payload.source=cursor-agent, then
+    optionally patched to automation-daily-gemini. Matching only the latter
+    allowed duplicate inserts for the same calendar day.
+    """
     q = select(SignalEntry.id).where(
         SignalEntry.reference_date == ref_date,
         SignalEntry.deleted_at.is_(None),
         SignalEntry.data_extracted.is_(True),
-        text("payload->>'source' = 'automation-daily-gemini'"),
     )
     row = (await db.execute(q)).first()
     return row is not None
@@ -665,7 +667,7 @@ async def run_daily_balanced_automation(
             base_prompt = (
                 "Tìm TOP tín hiệu mua BALANCED theo dữ liệu snapshot và sector-flow-5d. "
                 "Bắt buộc xuất tiêu đề có mẫu 'TÍN HIỆU MUA BALANCED - NGÀY dd/mm/yyyy' "
-                "và danh sách #1/#2/#3 theo format '#<rank>. <SYMBOL> - <SECTOR>' kèm giá hiện tại VND."
+                "và danh sách '#<rank>. <SYMBOL> - <SECTOR>' kèm giá hiện tại VND."
             )
         full_prompt = _build_gemini_prompt(base_prompt, snapshot_payload, sector_data)
         valid_symbols = _extract_valid_symbols(snapshot_payload)
@@ -766,8 +768,10 @@ async def run_daily_balanced_automation(
             if not isinstance(meta, dict):
                 meta = {}
             meta["run_id"] = run_id
+            meta["review_required"] = True
             new_payload["meta"] = meta
             row.payload = new_payload
+            row.data_extracted = False
             await db.commit()
 
     steps.append(

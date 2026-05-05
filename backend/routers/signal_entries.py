@@ -24,6 +24,7 @@ from schemas.signal_entry import (
     SignalEntryIngestAgentResponse,
     SignalEntryListResponse,
     SignalEntryOut,
+    SignalEntryPublishRequest,
     SignalEntryUpdate,
 )
 
@@ -203,7 +204,7 @@ async def ingest_signal_entry_from_agent(
             "buy_signals": buy_signals,
             "meta": {"title": body.title, "parsed_at": parsed_at},
         },
-        data_extracted=True,
+        data_extracted=False,
     )
     db.add(row)
     await db.commit()
@@ -214,6 +215,88 @@ async def ingest_signal_entry_from_agent(
         created_at=row.created_at,
         buy_signal_count=len(body.buy_signals),
     )
+
+
+@router.get(
+    "/api/v1/review/signal-entries",
+    response_model=SignalEntryListResponse,
+)
+async def list_signal_entries_for_review(
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be >= 0")
+
+    cond = (
+        SignalEntry.deleted_at.is_(None),
+        SignalEntry.data_extracted.is_(False),
+    )
+    count_q = select(func.count()).select_from(SignalEntry).where(*cond)
+    total = (await db.execute(count_q)).scalar_one()
+    q = (
+        select(SignalEntry)
+        .where(*cond)
+        .order_by(SignalEntry.reference_date.desc().nullslast(), SignalEntry.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = (await db.execute(q)).scalars().all()
+    return SignalEntryListResponse(
+        items=[SignalEntryOut.model_validate(r) for r in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post(
+    "/api/v1/review/signal-entries/{entry_id}/publish",
+    response_model=SignalEntryOut,
+)
+async def publish_signal_entry_from_review(
+    entry_id: int,
+    body: SignalEntryPublishRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(SignalEntry).where(SignalEntry.id == entry_id))
+    row = result.scalar_one_or_none()
+    if not row or row.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="signal entry not found")
+    if not isinstance(row.payload, dict):
+        raise HTTPException(status_code=400, detail="entry payload is missing")
+
+    parsed = _parse_buy_signals(row.payload)
+    if not parsed:
+        raise HTTPException(status_code=400, detail="entry has no buy_signals to publish")
+
+    allowed = {s.symbol for s in parsed}
+    requested = set(body.symbols)
+    invalid = sorted([s for s in requested if s not in allowed])
+    if invalid:
+        raise HTTPException(status_code=400, detail=f"symbols not found in entry: {', '.join(invalid)}")
+
+    selected = [s.model_dump(mode="json") for s in parsed if s.symbol in requested]
+    if not selected:
+        raise HTTPException(status_code=400, detail="no symbols selected for publish")
+
+    payload = dict(row.payload)
+    payload["buy_signals"] = selected
+    meta = payload.get("meta")
+    if not isinstance(meta, dict):
+        meta = {}
+    meta["review_published_at"] = datetime.now(timezone.utc).isoformat()
+    payload["meta"] = meta
+
+    row.payload = payload
+    row.data_extracted = True
+    row.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(row)
+    return SignalEntryOut.model_validate(row)
 
 
 @router.get(

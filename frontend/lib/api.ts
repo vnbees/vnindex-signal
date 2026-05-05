@@ -258,6 +258,7 @@ export interface NewfeedBuySignal {
   recommendation: string | null;
   sector: string | null;
   price: number | null;
+  why_selected?: string[] | null;
   current_price?: number | null;
   pnl_3d_pct?: number | null;
   pnl_5d_pct?: number | null;

@@ -111,6 +111,7 @@ class BuySignalIn(BaseModel):
     pnl_10d_pct: Optional[float] = None
     price_as_of: Optional[date] = None
     pnl_basis_trade_dates: Optional[dict[str, Optional[date]]] = None
+    why_selected: Optional[list[str]] = None
 
     @field_validator("symbol")
     @classmethod
@@ -159,6 +160,29 @@ class SignalEntryIngestAgentResponse(BaseModel):
     reference_date: date
     created_at: datetime
     buy_signal_count: int
+
+
+class SignalEntryPublishRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    symbols: list[str] = Field(..., min_length=1)
+
+    @field_validator("symbols")
+    @classmethod
+    def validate_symbols(cls, values: list[str]) -> list[str]:
+        out: list[str] = []
+        seen: set[str] = set()
+        for raw in values:
+            norm = _normalize_symbol_optional(raw)
+            if norm is None:
+                continue
+            if norm in seen:
+                continue
+            seen.add(norm)
+            out.append(norm)
+        if not out:
+            raise ValueError("symbols must contain at least one valid symbol")
+        return out
 
 
 class NewfeedItem(BaseModel):

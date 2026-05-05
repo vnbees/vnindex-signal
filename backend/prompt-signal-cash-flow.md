@@ -96,9 +96,9 @@ YÊU CẦU KẾT QUẢ:
   * 🎯 RSI trong vùng 30-35 (oversold tốt nhất)
   * 📊 Volume ratio 1.0-1.3x (tăng ổn định)
   * 📈 SMA ratio >= 0.95 (uptrend rõ ràng)
-- Giới hạn: TOP 3 tín hiệu tốt nhất mỗi ngày
+- Không giới hạn số lượng mã: mã nào thỏa đủ điều kiện thì phải trả về.
 - Quy tắc xuất kết quả:
-  * Nếu có >= 1 mã đạt đủ điều kiện bắt buộc và không vi phạm loại trừ: bắt buộc hiển thị danh sách mã đạt (tối đa TOP 3).
+  * Nếu có >= 1 mã đạt đủ điều kiện bắt buộc và không vi phạm loại trừ: bắt buộc hiển thị đầy đủ danh sách mã đạt.
   * Chỉ được ghi "không có tín hiệu" khi sau khi lọc toàn bộ symbols, số mã đạt = 0.
   * Nếu có dữ liệu screened_top3 trong snapshot, dùng để đối chiếu chéo; kết luận cuối cùng vẫn phải theo đúng 8 điều kiện bắt buộc + điều kiện loại trừ nêu ở trên (không thêm/không bớt điều kiện).
 - Khuyến nghị quản lý rủi ro:
