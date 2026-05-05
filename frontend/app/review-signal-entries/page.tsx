@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { publishReviewedSignalsAction, type ReviewActionResult } from "./actions";
+import { publishReviewedSignalsAction } from "./actions";
 import { fetchWithTimeout } from "@/lib/serverFetch";
 import { getServerBackendUrl } from "@/lib/serverBackendUrl";
 import type { SignalEntryListResponse } from "@/lib/api";
@@ -71,9 +71,9 @@ export default async function ReviewSignalEntriesPage() {
     return <p className="rounded border border-tv-border bg-tv-panel p-4 text-sm text-tv-down">{loaded.message}</p>;
   }
 
-  async function publishAction(entryId: number, formData: FormData): Promise<ReviewActionResult> {
+  async function publishAction(entryId: number, formData: FormData): Promise<void> {
     "use server";
-    return publishReviewedSignalsAction(entryId, formData);
+    await publishReviewedSignalsAction(entryId, formData);
   }
 
   return (
