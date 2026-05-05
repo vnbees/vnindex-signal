@@ -27,3 +27,15 @@ class DailyAutomationResponse(BaseModel):
     buy_signals: list[BuySignalIn] = []
     raw_text_preview: str | None = None
     steps: list[AutomationStepResult]
+
+
+class DailyAutomationTriggerResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool
+    accepted: bool
+    run_id: str
+    detail: str
+    dry_run: bool = False
+    force: bool = False
+    use_mock_result: bool = False
