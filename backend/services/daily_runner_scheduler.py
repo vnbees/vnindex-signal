@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -12,6 +13,7 @@ from services.daily_automation_service import run_daily_balanced_automation
 _VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 _SCHEDULER_POLL_SECONDS = 45
 _RETRY_COOLDOWN_SECONDS = 300
+logger = logging.getLogger(__name__)
 
 
 class DailyRunnerScheduler:
@@ -22,6 +24,12 @@ class DailyRunnerScheduler:
     async def start(self) -> None:
         if self._task and not self._task.done():
             return
+        # Trigger one immediate check on startup so deploys after 16:30
+        # still run the daily workflow without waiting for the first poll.
+        try:
+            await self._run_once()
+        except Exception:
+            logger.exception("daily scheduler immediate startup check failed")
         self._task = asyncio.create_task(self._run_loop(), name="daily-balanced-scheduler")
 
     async def stop(self) -> None:
@@ -59,6 +67,7 @@ class DailyRunnerScheduler:
             return
 
         self._last_attempt_at = datetime.now(_VN_TZ)
+        logger.info("daily scheduler triggering automation for %s", ref_date.isoformat())
         prompt_file = Path(__file__).resolve().parents[1] / "prompt-signal-cash-flow.md"
         async with AsyncSessionLocal() as db:
             await run_daily_balanced_automation(
@@ -75,6 +84,6 @@ class DailyRunnerScheduler:
                 await self._run_once()
             except Exception:
                 # Keep scheduler alive; it will retry on next poll.
-                pass
+                logger.exception("daily scheduler poll failed")
             await asyncio.sleep(_SCHEDULER_POLL_SECONDS)
 
