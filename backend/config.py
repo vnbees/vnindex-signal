@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     google_gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.0-flash"
     automation_http_timeout_seconds: int = 120
+    automation_allow_mock_result: bool = False
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

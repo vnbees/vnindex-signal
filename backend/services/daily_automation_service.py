@@ -533,6 +533,64 @@ def _build_default_near_miss(snapshot_payload: dict[str, Any], selected_symbols:
     return [row for _, row in candidates[:top_n]]
 
 
+def _snapshot_symbol_map(snapshot_payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    payload = snapshot_payload.get("payload") if isinstance(snapshot_payload.get("payload"), dict) else snapshot_payload
+    if not isinstance(payload, dict):
+        return {}
+    symbols = payload.get("symbols")
+    if not isinstance(symbols, list):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for row in symbols:
+        if not isinstance(row, dict):
+            continue
+        sym = str(row.get("symbol") or "").strip().upper()
+        if sym:
+            out[sym] = row
+    return out
+
+
+def _f(value: Any) -> float | None:
+    try:
+        return float(value) if value is not None else None
+    except Exception:
+        return None
+
+
+def _fallback_why_selected(symbol: str, snapshot_row: dict[str, Any] | None) -> list[str]:
+    if not snapshot_row:
+        return ["Đạt bộ lọc kỹ thuật/sector-flow theo snapshot hiện tại."]
+    ind = snapshot_row.get("indicators") if isinstance(snapshot_row.get("indicators"), dict) else {}
+    reasons: list[str] = []
+    rsi = _f(ind.get("rsi14"))
+    if rsi is not None and 30 <= rsi <= 45:
+        reasons.append(f"RSI14 {rsi:.2f} nằm trong vùng 30-45.")
+    macd = _f(ind.get("macd_hist"))
+    if macd is not None and macd > 0:
+        reasons.append(f"MACD histogram dương ({macd:.4f}).")
+    sma_ratio = _f(ind.get("sma5_over_sma20"))
+    if sma_ratio is not None and sma_ratio >= 0.92:
+        reasons.append(f"Tỷ lệ SMA5/SMA20 đạt {sma_ratio:.3f} (>= 0.92).")
+    adx = _f(ind.get("adx14"))
+    if adx is not None and adx >= 15:
+        reasons.append(f"ADX14 đạt {adx:.2f} (>= 15).")
+    vol_ratio = _f(ind.get("volume_ratio"))
+    if vol_ratio is not None and 1.0 <= vol_ratio <= 2.0:
+        reasons.append(f"Volume ratio {vol_ratio:.2f} nằm trong dải 1.0-2.0.")
+    vol = _f(ind.get("total_volume_latest"))
+    avg5 = _f(ind.get("avg_volume_5d"))
+    if vol is not None and vol >= 100000:
+        reasons.append(f"Thanh khoản đạt {int(vol):,} cổ phiếu (>= 100k).".replace(",", "."))
+    if vol is not None and avg5 is not None and vol > avg5:
+        reasons.append(
+            f"Khối lượng phiên mới nhất cao hơn trung bình 5 phiên ({int(vol):,} > {int(avg5):,}).".replace(",", ".")
+        )
+    sector_flow_pct = _f(snapshot_row.get("sector_flow_pct"))
+    if sector_flow_pct is not None and sector_flow_pct > 0:
+        reasons.append(f"Dòng tiền ngành dương so với TB5 ({sector_flow_pct:.2f}%).")
+    return reasons[:6] if reasons else ["Đạt bộ lọc kỹ thuật/sector-flow theo snapshot hiện tại."]
+
+
 def _parse_gemini_json_output(
     obj: dict[str, Any],
     valid_symbols: set[str],
@@ -542,6 +600,7 @@ def _parse_gemini_json_output(
     title = str(obj.get("title") or "").strip() or "TÍN HIỆU MUA BALANCED"
     ref_date = _parse_reference_date_value(obj.get("reference_date"))
     selected = obj.get("selected_signals") if isinstance(obj.get("selected_signals"), list) else []
+    symbol_map = _snapshot_symbol_map(snapshot_payload)
     buy_signals: list[BuySignalIn] = []
     selected_rows: list[dict[str, Any]] = []
     for row in selected:
@@ -556,18 +615,26 @@ def _parse_gemini_json_output(
             price_val = float(price) if price is not None else None
         except Exception:
             price_val = None
+        why = (
+            [str(x).strip() for x in row.get("why_selected", []) if str(x).strip()]
+            if isinstance(row.get("why_selected"), list)
+            else []
+        )
+        if not why:
+            why = _fallback_why_selected(sym, symbol_map.get(sym))
+
         signal = BuySignalIn(
             rank=int(rank) if isinstance(rank, (int, float)) else None,
             symbol=sym,
             recommendation=str(row.get("recommendation")).strip() if row.get("recommendation") is not None else None,
             sector=str(row.get("sector")).strip() if row.get("sector") is not None else None,
             price=price_val,
-            why_selected=[str(x).strip() for x in row.get("why_selected", []) if str(x).strip()]
-            if isinstance(row.get("why_selected"), list)
-            else None,
+            why_selected=why,
         )
         buy_signals.append(signal)
-        selected_rows.append(row)
+        selected_row = dict(row)
+        selected_row["why_selected"] = why
+        selected_rows.append(selected_row)
     if not buy_signals:
         buy_signals = _fallback_signals_from_snapshot(snapshot_payload, valid_symbols)
     if not buy_signals:
