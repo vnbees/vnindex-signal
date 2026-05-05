@@ -17,8 +17,10 @@ from routers import (
     signals,
     stats,
 )
+from services.daily_runner_scheduler import DailyRunnerScheduler
 
 limiter = Limiter(key_func=get_remote_address)
+scheduler = DailyRunnerScheduler()
 
 app = FastAPI(
     title="VNINDEX Signal API",
@@ -91,6 +93,12 @@ async def ensure_feedback_table_exists():
         for stmt in signal_indexes:
             await session.execute(text(stmt))
         await session.commit()
+    await scheduler.start()
+
+
+@app.on_event("shutdown")
+async def stop_daily_scheduler():
+    await scheduler.stop()
 
 @app.get("/")
 async def root():
