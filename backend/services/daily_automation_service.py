@@ -294,6 +294,7 @@ def _fallback_signals_from_snapshot(snapshot: dict[str, Any], valid_symbols: set
         return []
     out: list[BuySignalIn] = []
     rank = 1
+    symbol_map = _snapshot_symbol_map(snapshot)
     for row in screened:
         if not isinstance(row, dict):
             continue
@@ -308,6 +309,7 @@ def _fallback_signals_from_snapshot(snapshot: dict[str, Any], valid_symbols: set
                 sector=str(row.get("sector")).strip() if row.get("sector") is not None else None,
                 price=float(indicators.get("price_close_vnd")) if indicators.get("price_close_vnd") is not None else None,
                 recommendation="THEO DÕI MUA",
+                why_selected=_fallback_why_selected(sym, symbol_map.get(sym)),
             )
         )
         rank += 1
