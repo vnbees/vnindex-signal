@@ -27,6 +27,11 @@ def _assert_mock_allowed(use_mock_result: bool) -> None:
         raise HTTPException(status_code=400, detail="use_mock_result is disabled")
 
 
+def _assert_force_allowed(force: bool) -> None:
+    if force and not settings.automation_allow_force_rerun:
+        raise HTTPException(status_code=400, detail="force rerun is disabled")
+
+
 @router.post(
     "/api/v1/automation/daily-balanced-run",
     response_model=DailyAutomationResponse,
@@ -41,6 +46,7 @@ async def run_daily_automation(
 ):
     _assert_token(x_automation_token)
     _assert_mock_allowed(use_mock_result)
+    _assert_force_allowed(force)
 
     prompt_file = Path(__file__).resolve().parents[1] / "prompt-signal-cash-flow.md"
 
@@ -86,6 +92,7 @@ async def trigger_daily_automation(
     global _active_daily_run
     _assert_token(x_automation_token)
     _assert_mock_allowed(use_mock_result)
+    _assert_force_allowed(force)
 
     if _active_daily_run and not _active_daily_run.done():
         raise HTTPException(status_code=409, detail="A daily automation run is already in progress")

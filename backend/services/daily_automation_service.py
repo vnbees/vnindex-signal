@@ -660,19 +660,25 @@ def _parse_gemini_json_output(
 
 
 async def _already_ingested(db: AsyncSession, ref_date: date) -> bool:
-    """Any published newsfeed row for this reference_date counts as ingested.
+    """Any existing automation-generated row for this date counts as already run.
 
-    Rows are created by /ingest-agent with payload.source=cursor-agent, then
-    optionally patched to automation-daily-gemini. Matching only the latter
-    allowed duplicate inserts for the same calendar day.
+    We treat both pending-review (data_extracted=False) and published rows as
+    "already ingested" so the job runs at most once per day.
     """
-    q = select(SignalEntry.id).where(
+    q = select(SignalEntry.id, SignalEntry.payload).where(
         SignalEntry.reference_date == ref_date,
         SignalEntry.deleted_at.is_(None),
-        SignalEntry.data_extracted.is_(True),
     )
-    row = (await db.execute(q)).first()
-    return row is not None
+    rows = (await db.execute(q)).all()
+    for row_id, payload in rows:
+        if not row_id:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        source = str(payload.get("source") or "").strip().lower()
+        if source in {"cursor-agent", "automation-daily-gemini"}:
+            return True
+    return False
 
 
 async def run_daily_balanced_automation(
