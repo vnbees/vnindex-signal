@@ -1,18 +1,6 @@
 import { getNewfeeds, type NewfeedItem } from "@/lib/api";
 import { formatDate, formatPrice } from "@/lib/utils";
 
-function formatCreatedAt(iso: string): string {
-  return new Intl.DateTimeFormat("vi-VN", {
-    timeZone: "Asia/Ho_Chi_Minh",
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-    year: "2-digit",
-  }).format(new Date(iso));
-}
-
 type HorizonStats = {
   validCount: number;
   winCount: number;
@@ -120,7 +108,7 @@ export async function NewsfeedView() {
 
       {!error ? (
         <section className="rounded-lg border border-tv-border bg-tv-panel p-4">
-          <p className="text-sm font-medium text-tv-text">Thống kê hiệu suất global (danh sách hiện tại)</p>
+          <p className="text-sm font-medium text-tv-text">Thống kê hiệu suất (danh sách hiện tại)</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
             <StatChip label="Sau 3 phiên" stats={stats3d} />
             <StatChip label="Sau 5 phiên" stats={stats5d} />
@@ -143,7 +131,6 @@ export async function NewsfeedView() {
                 <h2 className="text-base font-semibold text-tv-text">
                   {item.reference_date ? formatDate(item.reference_date) : "Không có ngày tham chiếu"}
                 </h2>
-                <span className="text-xs text-tv-muted">{formatCreatedAt(item.created_at)}</span>
                 {item.title ? <span className="text-xs text-tv-muted">- {item.title}</span> : null}
               </div>
 
@@ -151,13 +138,6 @@ export async function NewsfeedView() {
                 <p className="mb-2 text-sm font-medium text-tv-text">Mã mua</p>
                 <BuySignalsBlock item={item} />
               </div>
-
-              <details className="mt-3 rounded border border-tv-border/80 bg-tv-bg px-3 py-2">
-                <summary className="cursor-pointer text-sm text-tv-accent">
-                  Xem toàn bộ nội dung phân tích
-                </summary>
-                <pre className="mt-2 whitespace-pre-wrap text-xs text-tv-muted">{item.raw_text}</pre>
-              </details>
             </article>
           ))}
         </div>
