@@ -15,7 +15,8 @@ healthcheckTimeout = 30
 DATABASE_URL = "${{Postgres.DATABASE_URL}}"
 API_SECRET_KEY = "${{API_SECRET_KEY}}"
 PORT = "8000"
-CORS_ORIGINS = '["https://${{frontend.RAILWAY_PUBLIC_DOMAIN}}"]'
+# Theo domain public của frontend (custom domain + apex) để trình duyệt gọi API không bị CORS.
+CORS_ORIGINS = '["https://${{frontend.RAILWAY_PUBLIC_DOMAIN}}","https://www.viistock.io.vn","https://viistock.io.vn"]'
 
 [[services]]
 name = "frontend"
