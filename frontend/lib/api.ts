@@ -311,6 +311,53 @@ export async function submitFeedback(payload: FeedbackSubmit): Promise<FeedbackI
   return res.json() as Promise<FeedbackItem>;
 }
 
+export interface NewsfeedComment {
+  id: number;
+  signal_entry_id: number;
+  display_name: string;
+  body: string;
+  created_at: string;
+}
+
+export interface NewsfeedCommentListResponse {
+  items: NewsfeedComment[];
+}
+
+export async function getNewsfeedCommenterIdentity(commenterId: string): Promise<{ display_name: string }> {
+  const q = encodeURIComponent(commenterId);
+  return fetchAPI<{ display_name: string }>(`/api/v1/newsfeed/commenter-identity?commenter_id=${q}`);
+}
+
+export async function getNewsfeedComments(entryId: number): Promise<NewsfeedCommentListResponse> {
+  return fetchAPI<NewsfeedCommentListResponse>(`/api/v1/newfeeds/${entryId}/comments`);
+}
+
+export async function postNewsfeedComment(
+  entryId: number,
+  payload: { commenter_id: string; body: string }
+): Promise<NewsfeedComment> {
+  const res = await fetch(`${getApiUrl()}/api/v1/newfeeds/${entryId}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`API error ${res.status}: post comment`);
+  }
+  return res.json() as Promise<NewsfeedComment>;
+}
+
+export async function deleteNewsfeedComment(commentId: number): Promise<void> {
+  const res = await fetch(`${getApiUrl()}/api/v1/newfeeds/comments/${commentId}?admin=true`, {
+    method: "DELETE",
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`API error ${res.status}: delete comment`);
+  }
+}
+
 export async function getNewfeeds(limit = 20, offset = 0): Promise<NewfeedListResponse> {
   return fetchAPI<NewfeedListResponse>(`/api/v1/newfeeds?limit=${limit}&offset=${offset}`);
 }

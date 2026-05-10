@@ -12,6 +12,7 @@ from routers import (
     export,
     feedback,
     health,
+    newsfeed_comments,
     price_updates,
     signal_entries,
     signals,
@@ -47,6 +48,7 @@ app.include_router(export.router)
 app.include_router(feedback.router)
 app.include_router(balanced_data.router)
 app.include_router(signal_entries.router)
+app.include_router(newsfeed_comments.router)
 app.include_router(automation.router)
 
 @app.on_event("startup")
@@ -91,6 +93,25 @@ async def ensure_feedback_table_exists():
         await session.execute(text(create_index_sql))
         await session.execute(text(create_signal_entries_sql))
         for stmt in signal_indexes:
+            await session.execute(text(stmt))
+        create_newsfeed_comments_sql = """
+        CREATE TABLE IF NOT EXISTS newsfeed_comments (
+            id SERIAL PRIMARY KEY,
+            signal_entry_id INTEGER NOT NULL REFERENCES signal_entries(id) ON DELETE CASCADE,
+            commenter_id UUID NOT NULL,
+            display_name VARCHAR(80) NOT NULL,
+            body TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            deleted_at TIMESTAMPTZ NULL
+        );
+        """
+        newsfeed_comment_indexes = [
+            "CREATE INDEX IF NOT EXISTS ix_newsfeed_comments_signal_entry_id ON newsfeed_comments (signal_entry_id);",
+            "CREATE INDEX IF NOT EXISTS ix_newsfeed_comments_commenter_id ON newsfeed_comments (commenter_id);",
+            "CREATE INDEX IF NOT EXISTS ix_newsfeed_comments_deleted_at ON newsfeed_comments (deleted_at);",
+        ]
+        await session.execute(text(create_newsfeed_comments_sql))
+        for stmt in newsfeed_comment_indexes:
             await session.execute(text(stmt))
         await session.commit()
     await scheduler.start()

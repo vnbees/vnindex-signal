@@ -1,5 +1,6 @@
 import { getNewfeeds, type NewfeedItem } from "@/lib/api";
 import { formatDate, formatPrice } from "@/lib/utils";
+import { NewsfeedComments } from "@/components/NewsfeedComments";
 
 type HorizonStats = {
   validCount: number;
@@ -83,7 +84,7 @@ function BuySignalsBlock({ item }: { item: NewfeedItem }) {
   );
 }
 
-export async function NewsfeedView() {
+export async function NewsfeedView({ isAdmin = false }: { isAdmin?: boolean } = {}) {
   let items: NewfeedItem[] = [];
   let error = "";
   try {
@@ -138,6 +139,7 @@ export async function NewsfeedView() {
                 <p className="mb-2 text-sm font-medium text-tv-text">Mã mua</p>
                 <BuySignalsBlock item={item} />
               </div>
+              <NewsfeedComments entryId={item.id} isAdmin={isAdmin} />
             </article>
           ))}
         </div>

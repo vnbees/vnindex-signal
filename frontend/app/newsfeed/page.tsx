@@ -8,6 +8,11 @@ export const metadata: Metadata = {
   description: "Danh sách mã cổ phiếu được khuyến nghị mua theo từng ngày phân tích.",
 };
 
-export default async function NewsfeedPage() {
-  return <NewsfeedView />;
+export default async function NewsfeedPage({
+  searchParams,
+}: {
+  searchParams: { admin?: string };
+}) {
+  const isAdmin = searchParams?.admin === "true";
+  return <NewsfeedView isAdmin={isAdmin} />;
 }

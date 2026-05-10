@@ -8,6 +8,11 @@ export const metadata: Metadata = {
   description: "Hiển thị newsfeed tín hiệu mua mới nhất.",
 };
 
-export default async function ThongKeTinHieuPage() {
-  return <NewsfeedView />;
+export default async function ThongKeTinHieuPage({
+  searchParams,
+}: {
+  searchParams: { admin?: string };
+}) {
+  const isAdmin = searchParams?.admin === "true";
+  return <NewsfeedView isAdmin={isAdmin} />;
 }
