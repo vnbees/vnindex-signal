@@ -1,9 +1,11 @@
 function getApiUrl(): string {
-  if (typeof window === "undefined") {
-    // Server-side: đọc runtime env mỗi lần (không cache ở module level)
-    return process.env.API_URL_INTERNAL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  if (typeof window !== "undefined") {
+    // Trình duyệt: luôn gọi cùng origin → `app/api/v1/[[...path]]` proxy sang FastAPI.
+    // Tránh CORS và tránh NEXT_PUBLIC_API_URL bị thiếu/sai lúc `next build` (Dockerfile).
+    return "";
   }
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  // Server (RSC / route handlers): gọi thẳng backend
+  return process.env.API_URL_INTERNAL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 }
 
 export interface Signal {
