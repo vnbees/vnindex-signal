@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import uuid
@@ -17,6 +18,8 @@ from config import settings
 from models.signal_entry import SignalEntry
 from schemas.automation import AutomationStepResult, DailyAutomationResponse
 from schemas.signal_entry import BuySignalIn
+
+logger = logging.getLogger(__name__)
 
 
 def automation_http_base_url() -> str:
@@ -937,6 +940,11 @@ async def run_daily_balanced_automation(
         )
 
         if not force and await _already_ingested(db, parsed.reference_date):
+            logger.warning(
+                "daily automation skipped (already ingested) reference_date=%s — use soft-delete that date, "
+                "or enable AUTOMATION_ALLOW_FORCE_RERUN + force=true",
+                parsed.reference_date.isoformat(),
+            )
             return DailyAutomationResponse(
                 ok=True,
                 run_id=run_id,
