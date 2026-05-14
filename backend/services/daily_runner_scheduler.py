@@ -24,15 +24,12 @@ class DailyRunnerScheduler:
     async def start(self) -> None:
         if self._task and not self._task.done():
             return
-        # Tránh gọi 127.0.0.1 trước khi uvicorn bind xong (ConnectError lúc startup).
-        async def _delayed_first_run() -> None:
-            await asyncio.sleep(3)
-            try:
-                await self._run_once()
-            except Exception:
-                logger.exception("daily scheduler delayed startup check failed")
-
-        asyncio.create_task(_delayed_first_run(), name="daily-balanced-scheduler-immediate")
+        # Trigger one immediate check on startup so deploys after 16:30
+        # still run the daily workflow without waiting for the first poll.
+        try:
+            await self._run_once()
+        except Exception:
+            logger.exception("daily scheduler immediate startup check failed")
         self._task = asyncio.create_task(self._run_loop(), name="daily-balanced-scheduler")
 
     async def stop(self) -> None:
