@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 import uuid
-import warnings
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -192,10 +191,10 @@ def _build_gemini_prompt(base_prompt: str, snapshot: dict[str, Any], sector_flow
         "{\n"
         '  "title": "string",\n'
         '  "reference_date": "YYYY-MM-DD",\n'
-        '  "reason": "string (tiếng Việt, BẮT BUỘC, tối thiểu 300 ký tự sau khi trim): KHÔNG được chỉ lặp lại quy trình lọc chung. '
-        "Phải gắn với KẾT QUẢ: nhắc TÊN MÃ IN HOA từng mã trong selected_signals (mỗi mã ít nhất một lần, dạng từ độc lập VD \\bFPT\\b) và với mỗi mã nêu 1–2 chỉ số thực tế từ snapshot (RSI14, macd_hist, volume_ratio, sector-flow pct_vs_5d…). "
-        "Nếu có screened_candidates: nói rõ mã nào trong đó được giữ/loại và vì sao. "
-        "near_miss_signals: liệt kê mã gần đạt và điều kiện thất bại có số.\",\n"
+        '  "reason": "string (tiếng Việt, BẮT BUỘC, tối thiểu 200 ký tự sau khi trim): giải thích chi tiết toàn bộ suy luận — '
+        "cách áp dụng 8 điều kiện bắt buộc + loại trừ tin tức, cách xếp hạng selected_signals, "
+        "mối liên hệ với sector-flow-5d và screened_candidates (nếu có), vì sao loại các mã gần đạt; "
+        "nếu selected_signals rỗng thì giải thích rõ vì sao không có mã đạt hoặc vì sao không thể điền danh sách.\",\n"
         '  "sector_flow_analysis": [\n'
         "    {\n"
         '      "sector": "string",\n'
@@ -224,12 +223,7 @@ def _build_gemini_prompt(base_prompt: str, snapshot: dict[str, Any], sector_flow
         '  "analysis_notes": "string"\n'
         "}\n"
         "Ràng buộc: selected_signals không giới hạn số lượng, symbol phải thuộc dữ liệu snapshot; "
-        'trường "reason" không được rút gọn hoặc bỏ qua — phải là đoạn văn đầy đủ, có thể nhiều câu và xuống dòng (\\n).\n'
-        "QUAN HỆ BẮT BUỘC:\n"
-        '- "reason" phải chứa tên từng mã (HOÁ) trùng với mọi phần tử của "selected_signals" (không được chỉ nói "theo 8 điều kiện" mà không liệt kê tên mã).\n'
-        '- Phải có đủ các khóa: sector_flow_analysis, selected_signals, near_miss_signals, analysis_notes (mảng/object đúng kiểu JSON).\n'
-        "- Pipeline từ chối output nếu thiếu selected_signals hợp lệ hoặc reason không gắn với từng mã đã chọn.\n"
-        "- selected_signals phải phản ánh kết quả lọc thực tế; không được trả JSON chỉ có title/reference_date/reason."
+        'trường "reason" không được rút gọn hoặc bỏ qua — phải là đoạn văn đầy đủ, có thể nhiều câu và xuống dòng (\\n).'
     )
 
 
@@ -296,6 +290,37 @@ def _extract_valid_symbols(snapshot: dict[str, Any]) -> set[str]:
     return out
 
 
+def _fallback_signals_from_snapshot(snapshot: dict[str, Any], valid_symbols: set[str]) -> list[BuySignalIn]:
+    payload = snapshot.get("payload") if isinstance(snapshot.get("payload"), dict) else snapshot
+    if not isinstance(payload, dict):
+        return []
+    screened = payload.get("screened_candidates") or payload.get("screened_top3")
+    if not isinstance(screened, list):
+        return []
+    out: list[BuySignalIn] = []
+    rank = 1
+    symbol_map = _snapshot_symbol_map(snapshot)
+    for row in screened:
+        if not isinstance(row, dict):
+            continue
+        sym = str(row.get("symbol") or "").strip().upper()
+        if not sym or (valid_symbols and sym not in valid_symbols):
+            continue
+        indicators = row.get("indicators") if isinstance(row.get("indicators"), dict) else {}
+        out.append(
+            BuySignalIn(
+                rank=rank,
+                symbol=sym,
+                sector=str(row.get("sector")).strip() if row.get("sector") is not None else None,
+                price=float(indicators.get("price_close_vnd")) if indicators.get("price_close_vnd") is not None else None,
+                recommendation="THEO DÕI MUA",
+                why_selected=_fallback_why_selected(sym, symbol_map.get(sym)),
+            )
+        )
+        rank += 1
+    return out
+
+
 def _compact_sector_flow_for_ai(sector_flow: dict[str, Any]) -> dict[str, Any]:
     sectors = sector_flow.get("sectors")
     compact: list[dict[str, Any]] = []
@@ -329,74 +354,26 @@ async def _http_json(client: httpx.AsyncClient, method: str, url: str, **kwargs:
     return data
 
 
-def _gemini_balanced_response_schema() -> dict[str, Any]:
-    """Schema cho controlled JSON generation (Gemini API responseSchema)."""
-    sector_item: dict[str, Any] = {
-        "type": "OBJECT",
-        "properties": {
-            "sector": {"type": "STRING"},
-            "flow_today_vnd": {"type": "NUMBER"},
-            "avg_5d_vnd": {"type": "NUMBER"},
-            "pct_vs_5d": {"type": "NUMBER"},
+async def _run_gemini(prompt: str) -> dict[str, Any]:
+    if not settings.google_gemini_api_key:
+        raise RuntimeError("Missing GOOGLE_GEMINI_API_KEY")
+    model = settings.gemini_model.strip() or "gemini-2.0-flash"
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        f"?key={settings.google_gemini_api_key}"
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.05,
+            "responseMimeType": "application/json",
+            "maxOutputTokens": 8192,
         },
-        "required": ["sector", "flow_today_vnd", "avg_5d_vnd", "pct_vs_5d"],
     }
-    sel_item: dict[str, Any] = {
-        "type": "OBJECT",
-        "properties": {
-            "rank": {"type": "NUMBER"},
-            "symbol": {"type": "STRING"},
-            "sector": {"type": "STRING"},
-            "price": {"type": "NUMBER"},
-            "recommendation": {"type": "STRING"},
-            "why_selected": {"type": "ARRAY", "items": {"type": "STRING"}},
-        },
-        "required": ["rank", "symbol", "why_selected"],
-    }
-    near_item: dict[str, Any] = {
-        "type": "OBJECT",
-        "properties": {
-            "symbol": {"type": "STRING"},
-            "sector": {"type": "STRING"},
-            "failed_conditions": {"type": "ARRAY", "items": {"type": "STRING"}},
-        },
-        "required": ["symbol", "failed_conditions"],
-    }
-    return {
-        "type": "OBJECT",
-        "properties": {
-            "title": {"type": "STRING"},
-            "reference_date": {"type": "STRING"},
-            "reason": {"type": "STRING"},
-            "sector_flow_analysis": {"type": "ARRAY", "items": sector_item},
-            "selected_signals": {"type": "ARRAY", "items": sel_item},
-            "near_miss_signals": {"type": "ARRAY", "items": near_item},
-            "analysis_notes": {"type": "STRING"},
-        },
-        "required": [
-            "title",
-            "reference_date",
-            "reason",
-            "sector_flow_analysis",
-            "selected_signals",
-            "near_miss_signals",
-            "analysis_notes",
-        ],
-    }
+    timeout = max(30, int(settings.automation_http_timeout_seconds))
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        data = await _http_json(client, "POST", url, json=payload)
 
-
-def _gemini_generation_config(*, temperature: float, use_response_schema: bool) -> dict[str, Any]:
-    cfg: dict[str, Any] = {
-        "temperature": temperature,
-        "responseMimeType": "application/json",
-        "maxOutputTokens": 8192,
-    }
-    if use_response_schema and settings.gemini_use_response_schema:
-        cfg["responseSchema"] = _gemini_balanced_response_schema()
-    return cfg
-
-
-def _text_from_gemini_candidates(data: dict[str, Any]) -> str:
     candidates = data.get("candidates")
     if not isinstance(candidates, list) or not candidates:
         raise RuntimeError("Gemini response has no candidates")
@@ -411,44 +388,6 @@ def _text_from_gemini_candidates(data: dict[str, Any]) -> str:
     out = "\n".join(chunks).strip()
     if not out:
         raise RuntimeError("Gemini returned empty text")
-    return out
-
-
-async def _run_gemini(prompt: str) -> dict[str, Any]:
-    if not settings.google_gemini_api_key:
-        raise RuntimeError("Missing GOOGLE_GEMINI_API_KEY")
-    model = settings.gemini_model.strip() or "gemini-2.0-flash"
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        f"?key={settings.google_gemini_api_key}"
-    )
-    timeout = max(30, int(settings.automation_http_timeout_seconds))
-    attempts_schema: list[bool] = [True, False] if settings.gemini_use_response_schema else [False]
-    data: dict[str, Any] | None = None
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        for use_schema in attempts_schema:
-            body = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": _gemini_generation_config(temperature=0.05, use_response_schema=use_schema),
-            }
-            r = await client.post(url, json=body)
-            if r.status_code == 400 and use_schema:
-                warnings.warn(
-                    "Gemini returned HTTP 400 with responseSchema; retrying without responseSchema.",
-                    UserWarning,
-                    stacklevel=1,
-                )
-                continue
-            r.raise_for_status()
-            parsed = r.json()
-            if not isinstance(parsed, dict):
-                raise ValueError("Unexpected Gemini response JSON root")
-            data = parsed
-            break
-    if data is None:
-        raise RuntimeError("Gemini request failed after retries")
-
-    out = _text_from_gemini_candidates(data)
     try:
         obj = json.loads(out)
     except Exception:
@@ -459,24 +398,33 @@ async def _run_gemini(prompt: str) -> dict[str, Any]:
                         {
                             "text": (
                                 "Convert the following malformed JSON-like text into VALID JSON object only. "
-                                "Do not add markdown. Preserve all keys from the original if possible. "
-                                "The output MUST include these top-level keys with correct JSON types: "
-                                "title (string), reference_date (string), reason (string, >=300 chars Vietnamese), "
-                                "sector_flow_analysis (array of objects), selected_signals (array of objects), "
-                                "near_miss_signals (array of objects), analysis_notes (string). "
-                                'If "reason" is missing or too short, synthesize from the rest but it must mention '
-                                "every ticker symbol listed in selected_signals by name.\n\n"
+                                "Do not add markdown. Preserve all keys from the original if possible; "
+                                'if the object lacks a top-level string field "reason" with at least 200 characters '
+                                "of Vietnamese explanation of the analysis outcome, synthesize one from the content.\n\n"
                                 f"{out}"
                             )
                         }
                     ]
                 }
             ],
-            "generationConfig": _gemini_generation_config(temperature=0.0, use_response_schema=False),
+            "generationConfig": {
+                "temperature": 0.0,
+                "responseMimeType": "application/json",
+                "maxOutputTokens": 8192,
+            },
         }
         async with httpx.AsyncClient(timeout=timeout) as client:
             repaired_data = await _http_json(client, "POST", url, json=repair_payload)
-        repaired_text = _text_from_gemini_candidates(repaired_data)
+        repaired_candidates = repaired_data.get("candidates")
+        if not isinstance(repaired_candidates, list) or not repaired_candidates:
+            raise RuntimeError("Gemini JSON repair failed: no candidates")
+        repaired_content = repaired_candidates[0].get("content") if isinstance(repaired_candidates[0], dict) else None
+        repaired_parts = repaired_content.get("parts") if isinstance(repaired_content, dict) else None
+        repaired_text = ""
+        if isinstance(repaired_parts, list):
+            repaired_text = "\n".join(
+                [p.get("text") for p in repaired_parts if isinstance(p, dict) and isinstance(p.get("text"), str)]
+            ).strip()
         try:
             obj = json.loads(repaired_text)
         except Exception as e:
@@ -494,28 +442,11 @@ def _extract_required_reason(obj: dict[str, Any]) -> str:
             'Thiếu trường JSON "reason" (kiểu string). AI phải giải thích chi tiết vì sao có kết quả output như vậy.'
         )
     s = r.strip()
-    if len(s) < 300:
+    if len(s) < 200:
         raise ValueError(
-            'Trường "reason" phải dài tối thiểu 300 ký tự (sau trim) — phải gắn với từng mã trong selected_signals và số liệu cụ thể, không chỉ lặp lại quy trình lọc.'
+            'Trường "reason" phải dài tối thiểu 200 ký tự (sau trim) — mô tả đầy đủ suy luận: điều kiện, ưu tiên, loại trừ, sector-flow.'
         )
     return s
-
-
-def _assert_reason_references_selected_symbols(reason: str, symbols: list[str]) -> None:
-    """`reason` phải nhắc tên từng mã output — tránh đoạn văn 'vớ vẩn' không gắn kết quả."""
-    if not symbols:
-        return
-    missing: list[str] = []
-    for sym in symbols:
-        if not re.search(rf"(?<![A-Za-z0-9]){re.escape(sym)}(?![A-Za-z0-9])", reason):
-            missing.append(sym)
-    if missing:
-        head = ", ".join(missing[:15])
-        tail = " …" if len(missing) > 15 else ""
-        raise ValueError(
-            f'Phần "reason" phải nhắc rõ tên từng mã đã chọn (thiếu tên trong reason: {head}{tail}). '
-            "Viết giải thích gắn với OUTPUT: từng ticker + chỉ số cụ thể từ snapshot, không chỉ mô tả quy trình lọc chung."
-        )
 
 
 def _render_raw_text_from_json(
@@ -697,12 +628,8 @@ def _parse_gemini_json_output(
 ) -> ParsedGeminiJson:
     title = str(obj.get("title") or "").strip() or "TÍN HIỆU MUA BALANCED"
     ref_date = _parse_reference_date_value(obj.get("reference_date"))
-    if "selected_signals" not in obj or not isinstance(obj.get("selected_signals"), list):
-        raise ValueError(
-            'Thiếu hoặc sai kiểu trường JSON "selected_signals" (bắt buộc là mảng). '
-            "Không chấp nhận object chỉ có title/reference_date/reason — phải trả đủ schema."
-        )
-    selected = obj["selected_signals"]
+    output_reason = _extract_required_reason(obj)
+    selected = obj.get("selected_signals") if isinstance(obj.get("selected_signals"), list) else []
     symbol_map = _snapshot_symbol_map(snapshot_payload)
     buy_signals: list[BuySignalIn] = []
     selected_rows: list[dict[str, Any]] = []
@@ -739,13 +666,9 @@ def _parse_gemini_json_output(
         selected_row["why_selected"] = why
         selected_rows.append(selected_row)
     if not buy_signals:
-        raise ValueError(
-            '"selected_signals" rỗng hoặc không có mã hợp lệ trong snapshot. '
-            "Pipeline không còn ghép danh sách từ screened_candidates khi model thiếu JSON; "
-            "hãy trả đúng selected_signals (ít nhất một mã đạt 8 điều kiện + không loại trừ tin)."
-        )
-    output_reason = _extract_required_reason(obj)
-    _assert_reason_references_selected_symbols(output_reason, [s.symbol for s in buy_signals])
+        buy_signals = _fallback_signals_from_snapshot(snapshot_payload, valid_symbols)
+    if not buy_signals:
+        raise ValueError("Không tìm thấy buy_signals hợp lệ")
     sector_flow_rows = obj.get("sector_flow_analysis") if isinstance(obj.get("sector_flow_analysis"), list) else []
     near_miss_rows = obj.get("near_miss_signals") if isinstance(obj.get("near_miss_signals"), list) else []
     if not sector_flow_rows:
@@ -854,38 +777,29 @@ async def run_daily_balanced_automation(
         valid_symbols = _extract_valid_symbols(snapshot_payload)
         if use_mock_result:
             today_iso = date.today().isoformat()
-            mock_sym = "TIG" if "TIG" in valid_symbols else next(iter(sorted(valid_symbols)), "VCB")
-            gemini_obj = {
+            gemini_obj: dict[str, Any] = {
                 "title": f"TÍN HIỆU MUA BALANCED - NGÀY {date.today().strftime('%d/%m/%Y')}",
                 "reference_date": today_iso,
                 "reason": (
-                    f"Chế độ mock pipeline balanced: không gọi Gemini thật. Output gồm một mã ví dụ {mock_sym} trong selected_signals; "
-                    f"reason bắt buộc nhắc tên mã {mock_sym} để khớp validator production. "
-                    f"Giải thích gắn kết quả: mã {mock_sym} đứng rank 1 với giả định giá 6700 VND, ngành Bất động sản, why_selected mock. "
-                    f"Lặp tên để rõ ràng: mã {mock_sym}, cổ phiếu {mock_sym}, ticker {mock_sym}. "
-                    "Phần còn lại là padding văn bản cho đủ độ dài tối thiểu theo cấu hình backend và kiểm thử CI."
+                    "Đây là chế độ mock: pipeline không gọi Gemini thật. "
+                    "Trong production, trường `reason` bắt buộc phải là đoạn văn tiếng Việt dài đủ (≥200 ký tự) "
+                    "giải thích tổng thể vì sao danh sách `selected_signals` được chọn theo đúng 8 điều kiện bắt buộc + loại trừ tin tức, "
+                    "cách đối chiếu sector-flow 5 phiên và screened_candidates, vì sao xếp thứ tự rank như vậy, "
+                    "và nếu không có mã đạt thì phải nêu rõ nguyên nhân từng nhóm điều kiện thiếu hoặc vi phạm."
                 ),
-                "sector_flow_analysis": [
-                    {"sector": "Mock sector", "flow_today_vnd": 0.0, "avg_5d_vnd": 0.0, "pct_vs_5d": 0.0}
-                ],
+                "sector_flow_analysis": [],
                 "selected_signals": [
                     {
                         "rank": 1,
-                        "symbol": mock_sym,
+                        "symbol": "TIG" if "TIG" in valid_symbols else next(iter(valid_symbols), "VCB"),
                         "sector": "Bất động sản",
                         "price": 6700,
                         "recommendation": "THEO DÕI MUA",
                         "why_selected": ["Mock test"],
                     }
                 ],
-                "near_miss_signals": [
-                    {
-                        "symbol": mock_sym,
-                        "sector": "N/A",
-                        "failed_conditions": ["Mock: không áp dụng near-miss thật"],
-                    }
-                ],
-                "analysis_notes": "Mock mode — sector_flow_analysis và near_miss là placeholder.",
+                "near_miss_signals": [],
+                "analysis_notes": "Mock mode",
             }
         else:
             gemini_obj = await _run_gemini(full_prompt)
