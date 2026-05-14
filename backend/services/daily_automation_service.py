@@ -191,6 +191,10 @@ def _build_gemini_prompt(base_prompt: str, snapshot: dict[str, Any], sector_flow
         "{\n"
         '  "title": "string",\n'
         '  "reference_date": "YYYY-MM-DD",\n'
+        '  "reason": "string (tiếng Việt, BẮT BUỘC, tối thiểu 200 ký tự sau khi trim): giải thích chi tiết toàn bộ suy luận — '
+        "cách áp dụng 8 điều kiện bắt buộc + loại trừ tin tức, cách xếp hạng selected_signals, "
+        "mối liên hệ với sector-flow-5d và screened_candidates (nếu có), vì sao loại các mã gần đạt; "
+        "nếu selected_signals rỗng thì giải thích rõ vì sao không có mã đạt hoặc vì sao không thể điền danh sách.\",\n"
         '  "sector_flow_analysis": [\n'
         "    {\n"
         '      "sector": "string",\n'
@@ -218,7 +222,8 @@ def _build_gemini_prompt(base_prompt: str, snapshot: dict[str, Any], sector_flow
         "  ],\n"
         '  "analysis_notes": "string"\n'
         "}\n"
-        "Ràng buộc: selected_signals không giới hạn số lượng, symbol phải thuộc dữ liệu snapshot."
+        "Ràng buộc: selected_signals không giới hạn số lượng, symbol phải thuộc dữ liệu snapshot; "
+        'trường "reason" không được rút gọn hoặc bỏ qua — phải là đoạn văn đầy đủ, có thể nhiều câu và xuống dòng (\\n).'
     )
 
 
@@ -362,7 +367,7 @@ async def _run_gemini(prompt: str) -> dict[str, Any]:
         "generationConfig": {
             "temperature": 0.05,
             "responseMimeType": "application/json",
-            "maxOutputTokens": 1800,
+            "maxOutputTokens": 8192,
         },
     }
     timeout = max(30, int(settings.automation_http_timeout_seconds))
@@ -393,7 +398,9 @@ async def _run_gemini(prompt: str) -> dict[str, Any]:
                         {
                             "text": (
                                 "Convert the following malformed JSON-like text into VALID JSON object only. "
-                                "Do not add markdown.\n\n"
+                                "Do not add markdown. Preserve all keys from the original if possible; "
+                                'if the object lacks a top-level string field "reason" with at least 200 characters '
+                                "of Vietnamese explanation of the analysis outcome, synthesize one from the content.\n\n"
                                 f"{out}"
                             )
                         }
@@ -403,7 +410,7 @@ async def _run_gemini(prompt: str) -> dict[str, Any]:
             "generationConfig": {
                 "temperature": 0.0,
                 "responseMimeType": "application/json",
-                "maxOutputTokens": 1800,
+                "maxOutputTokens": 8192,
             },
         }
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -427,6 +434,21 @@ async def _run_gemini(prompt: str) -> dict[str, Any]:
     return obj
 
 
+def _extract_required_reason(obj: dict[str, Any]) -> str:
+    """Gemini bắt buộc trả `reason` — giải thích tổng hợp kết quả JSON."""
+    r = obj.get("reason")
+    if not isinstance(r, str):
+        raise ValueError(
+            'Thiếu trường JSON "reason" (kiểu string). AI phải giải thích chi tiết vì sao có kết quả output như vậy.'
+        )
+    s = r.strip()
+    if len(s) < 200:
+        raise ValueError(
+            'Trường "reason" phải dài tối thiểu 200 ký tự (sau trim) — mô tả đầy đủ suy luận: điều kiện, ưu tiên, loại trừ, sector-flow.'
+        )
+    return s
+
+
 def _render_raw_text_from_json(
     title: str,
     ref_date: date,
@@ -434,8 +456,13 @@ def _render_raw_text_from_json(
     selected_rows: list[dict[str, Any]],
     near_miss_rows: list[dict[str, Any]],
     analysis_notes: str | None,
+    output_reason: str | None = None,
 ) -> str:
     lines: list[str] = [title, f"Phân tích dựa trên dữ liệu ngày {ref_date.strftime('%d/%m/%Y')}", ""]
+    if output_reason and output_reason.strip():
+        lines.append("## Giải thích kết quả (AI)")
+        lines.append(output_reason.strip())
+        lines.append("")
     lines.append("## Dòng tiền ngành phiên chạy vs trung bình 5 phiên")
     for row in sector_flow_rows:
         sector = str(row.get("sector") or "N/A")
@@ -601,6 +628,7 @@ def _parse_gemini_json_output(
 ) -> ParsedGeminiJson:
     title = str(obj.get("title") or "").strip() or "TÍN HIỆU MUA BALANCED"
     ref_date = _parse_reference_date_value(obj.get("reference_date"))
+    output_reason = _extract_required_reason(obj)
     selected = obj.get("selected_signals") if isinstance(obj.get("selected_signals"), list) else []
     symbol_map = _snapshot_symbol_map(snapshot_payload)
     buy_signals: list[BuySignalIn] = []
@@ -655,6 +683,7 @@ def _parse_gemini_json_output(
         selected_rows=selected_rows,
         near_miss_rows=[x for x in near_miss_rows if isinstance(x, dict)],
         analysis_notes=analysis_notes,
+        output_reason=output_reason,
     )
     return ParsedGeminiJson(title=title[:200], reference_date=ref_date, buy_signals=buy_signals, raw_text=raw_text)
 
@@ -751,6 +780,13 @@ async def run_daily_balanced_automation(
             gemini_obj: dict[str, Any] = {
                 "title": f"TÍN HIỆU MUA BALANCED - NGÀY {date.today().strftime('%d/%m/%Y')}",
                 "reference_date": today_iso,
+                "reason": (
+                    "Đây là chế độ mock: pipeline không gọi Gemini thật. "
+                    "Trong production, trường `reason` bắt buộc phải là đoạn văn tiếng Việt dài đủ (≥200 ký tự) "
+                    "giải thích tổng thể vì sao danh sách `selected_signals` được chọn theo đúng 8 điều kiện bắt buộc + loại trừ tin tức, "
+                    "cách đối chiếu sector-flow 5 phiên và screened_candidates, vì sao xếp thứ tự rank như vậy, "
+                    "và nếu không có mã đạt thì phải nêu rõ nguyên nhân từng nhóm điều kiện thiếu hoặc vi phạm."
+                ),
                 "sector_flow_analysis": [],
                 "selected_signals": [
                     {
