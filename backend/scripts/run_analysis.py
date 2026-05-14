@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 # ─── THÔNG SỐ ────────────────────────────────────────────────────────────────
-TODAY = date(2026, 4, 3)    # Thứ Sáu
+TODAY = date.today()    # Always run for current system date
 HOLD_DAYS = 3
 
 _DEFAULT_FIREANT = (
@@ -514,7 +514,7 @@ async def update_price_tracking(price_data: Dict[str, List]) -> None:
     print(f"\n💹 Bước 6B: Update price tracking...")
     headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
 
-    async with httpx.AsyncClient(timeout=60) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=30.0)) as client:
         r = await client.get(f"{WEBSITE_URL}/api/v1/price-updates/pending?limit=10000", headers=headers)
         if r.status_code != 200:
             print(f"⚠️  Không lấy được pending: {r.status_code}")
