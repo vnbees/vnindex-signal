@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     automation_base_url: str = "https://vnindex-signal-production.up.railway.app"
     google_gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.0-flash"
+    # Gửi responseSchema lên Gemini; nếu API trả 400 (model không hỗ trợ) sẽ tự thử lại không schema.
+    gemini_use_response_schema: bool = True
     automation_http_timeout_seconds: int = 120
     automation_allow_mock_result: bool = False
     automation_allow_force_rerun: bool = False
