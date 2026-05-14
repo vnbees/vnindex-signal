@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import uuid
 import warnings
@@ -17,21 +16,6 @@ from config import settings
 from models.signal_entry import SignalEntry
 from schemas.automation import AutomationStepResult, DailyAutomationResponse
 from schemas.signal_entry import BuySignalIn
-
-
-def automation_http_base_url() -> str:
-    """Base URL cho các HTTP self-call trong pipeline.
-
-    Trên Railway, gọi public domain từ chính backend dễ gặp 502 / ReadError lúc cold start.
-    Ưu tiên AUTOMATION_INTERNAL_BASE_URL; nếu không set và có RAILWAY_ENVIRONMENT thì dùng loopback.
-    """
-    explicit = (settings.automation_internal_base_url or "").strip()
-    if explicit:
-        return explicit.rstrip("/")
-    if os.environ.get("RAILWAY_ENVIRONMENT"):
-        port = (os.environ.get("PORT") or "8000").strip()
-        return f"http://127.0.0.1:{port}".rstrip("/")
-    return settings.automation_base_url.rstrip("/")
 
 
 @dataclass
@@ -813,7 +797,7 @@ async def run_daily_balanced_automation(
 ) -> DailyAutomationResponse:
     run_id = uuid.uuid4().hex
     steps: list[AutomationStepResult] = []
-    base_url = automation_http_base_url()
+    base_url = settings.automation_base_url.rstrip("/")
     timeout = max(30, int(settings.automation_http_timeout_seconds))
 
     async with httpx.AsyncClient(timeout=timeout) as client:

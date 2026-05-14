@@ -13,8 +13,6 @@ class Settings(BaseSettings):
     railway_service_frontend_url: str | None = None
     automation_token: str | None = None
     automation_base_url: str = "https://vnindex-signal-production.up.railway.app"
-    # Gọi API cùng process (vd. http://127.0.0.1:8000) — tránh 502 khi backend tự gọi public URL trên Railway.
-    automation_internal_base_url: str | None = None
     google_gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.0-flash"
     # Gửi responseSchema lên Gemini; nếu API trả 400 (model không hỗ trợ) sẽ tự thử lại không schema.
