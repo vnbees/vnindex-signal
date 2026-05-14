@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import type { FeedbackItem } from "@/lib/api";
-import { fetchWithTimeout } from "@/lib/serverFetch";
-import { getServerBackendUrl } from "@/lib/serverBackendUrl";
 
 export const metadata: Metadata = {
   title: "Admin — Góp ý | ViiStock",
   robots: { index: false, follow: false },
 };
 
+/** Luôn fetch tại runtime (ADMIN_API_KEY / API URL từ môi trường deploy). */
 export const dynamic = "force-dynamic";
 
 /**
@@ -36,44 +35,41 @@ function formatVietnamTime(iso: string): string {
   }).format(parseFeedbackInstant(iso));
 }
 
-const FETCH_MS = 12_000;
+function getBackendUrl(): string {
+  return (
+    process.env.API_URL_INTERNAL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:8000"
+  );
+}
 
 async function loadFeedback(): Promise<
-  { status: "ok"; items: FeedbackItem[] } | { status: "error"; message: string }
+  | { status: "ok"; items: FeedbackItem[] }
+  | { status: "no_key" }
+  | { status: "error"; message: string }
 > {
-  const base = getServerBackendUrl();
+  const key = process.env.ADMIN_API_KEY;
+  if (!key) {
+    return { status: "no_key" };
+  }
+  const base = getBackendUrl();
   try {
-    const res = await fetchWithTimeout(`${base}/api/v1/admin/feedback?limit=200`, {
+    const res = await fetch(`${base}/api/v1/admin/feedback?limit=200`, {
+      headers: { Authorization: `Bearer ${key}` },
       cache: "no-store",
-      timeoutMs: FETCH_MS,
     });
     if (!res.ok) {
-      const hint =
-        res.status === 404
-          ? " Restart process FastAPI sau khi cập nhật code."
-          : "";
       return {
         status: "error",
-        message: `Không tải được dữ liệu (HTTP ${res.status}).${hint}`,
+        message: `Không tải được dữ liệu (HTTP ${res.status}). Kiểm tra ADMIN_API_KEY và quyền API.`,
       };
     }
     const items = (await res.json()) as FeedbackItem[];
     return { status: "ok", items };
-  } catch (e) {
-    const aborted =
-      (e instanceof Error && (e.name === "AbortError" || e.name === "TimeoutError")) ||
-      (typeof DOMException !== "undefined" &&
-        e instanceof DOMException &&
-        e.name === "AbortError");
-    if (aborted) {
-      return {
-        status: "error",
-        message: `Hết thời gian chờ backend (${FETCH_MS / 1000}s). Chạy API cổng 8000 hoặc sửa API_URL_INTERNAL khi dev trên máy.`,
-      };
-    }
+  } catch {
     return {
       status: "error",
-      message: "Lỗi kết nối backend. Kiểm tra NEXT_PUBLIC_API_URL và backend đang chạy.",
+      message: "Lỗi kết nối backend. Kiểm tra API_URL_INTERNAL / NEXT_PUBLIC_API_URL.",
     };
   }
 }
@@ -102,13 +98,31 @@ function PageUrlCell({ url }: { url: string }) {
 export default async function AdminFeedbackPage() {
   const data = await loadFeedback();
 
+  if (data.status === "no_key") {
+    return (
+      <div className="tv-panel p-6">
+        <h1 className="text-xl font-semibold text-tv-text">Góp ý từ người dùng</h1>
+        <p className="mt-3 text-sm text-tv-muted">
+          Để xem danh sách, cấu hình biến môi trường{" "}
+          <code className="rounded bg-tv-panel-hover px-1 py-0.5 text-tv-text">ADMIN_API_KEY</code>{" "}
+          trên server frontend (Railway: service frontend → Variables). Giá trị là chuỗi key thô{" "}
+          <code className="rounded bg-tv-panel-hover px-1 py-0.5 text-xs">sk-vnindex-…</code> trùng
+          với một API key đang có trong backend (tạo bằng{" "}
+          <code className="rounded bg-tv-panel-hover px-1 py-0.5 text-xs">
+            backend/scripts/create_api_key.py
+          </code>{" "}
+          nếu chưa có), rồi redeploy frontend.
+        </p>
+      </div>
+    );
+  }
+
   if (data.status === "error") {
-    const message = data.message;
     return (
       <div className="tv-panel p-6">
         <h1 className="text-xl font-semibold text-tv-text">Góp ý từ người dùng</h1>
         <p className="mt-3 text-sm text-tv-down" role="alert">
-          {message}
+          {data.message}
         </p>
       </div>
     );
@@ -119,7 +133,10 @@ export default async function AdminFeedbackPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold text-tv-text">Góp ý từ người dùng</h1>
-      <p className="mt-1 text-sm text-tv-muted">Tối đa 200 mục mới nhất.</p>
+      <p className="mt-1 text-sm text-tv-muted">
+        Tối đa 200 mục mới nhất. Trang chỉ dùng nội bộ (cần{" "}
+        <code className="rounded bg-tv-panel px-1 py-0.5 text-xs">ADMIN_API_KEY</code>).
+      </p>
 
       {items.length === 0 ? (
         <p className="mt-6 text-sm text-tv-muted">Chưa có góp ý nào.</p>

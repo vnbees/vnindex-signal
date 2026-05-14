@@ -12,7 +12,7 @@ Quy tắc chọn base URL theo USE_PROD:
   - BASE_URL = http://localhost:8000
 
 Giá trị chạy mặc định:
-- USE_PROD = true
+- USE_PROD = false
 
 Mục tiêu:
 - Parse text phân tích người dùng gửi (tiếng Việt, nhiều dòng, dạng tự do như example-result.txt).
