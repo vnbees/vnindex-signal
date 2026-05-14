@@ -289,7 +289,7 @@ def _fallback_signals_from_snapshot(snapshot: dict[str, Any], valid_symbols: set
     payload = snapshot.get("payload") if isinstance(snapshot.get("payload"), dict) else snapshot
     if not isinstance(payload, dict):
         return []
-    screened = payload.get("screened_top3")
+    screened = payload.get("screened_candidates") or payload.get("screened_top3")
     if not isinstance(screened, list):
         return []
     out: list[BuySignalIn] = []
@@ -844,6 +844,7 @@ async def run_daily_balanced_automation(
                 meta = {}
             meta["run_id"] = run_id
             meta["review_required"] = True
+            meta["gemini_output"] = gemini_obj
             new_payload["meta"] = meta
             row.payload = new_payload
             row.data_extracted = False
