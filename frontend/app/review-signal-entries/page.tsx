@@ -40,41 +40,6 @@ function parseReviewSignals(payload: Record<string, unknown> | null): ReviewSign
     .filter((x) => x.symbol);
 }
 
-function formatGeminiOutput(payload: Record<string, unknown> | null | undefined): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const meta = payload.meta;
-  if (!meta || typeof meta !== "object") return null;
-  const raw = (meta as Record<string, unknown>).gemini_output;
-  if (raw === undefined || raw === null) return null;
-  if (typeof raw === "string") return raw;
-  try {
-    return JSON.stringify(raw, null, 2);
-  } catch {
-    return String(raw);
-  }
-}
-
-function ReviewGeminiOutput({ payload }: { payload: Record<string, unknown> | null | undefined }) {
-  const text = formatGeminiOutput(payload);
-  if (!text) {
-    return (
-      <p className="mt-2 text-xs text-tv-muted">
-        Chưa có output Gemini lưu kèm entry (chỉ có với job automation sau khi deploy bản mới).
-      </p>
-    );
-  }
-  return (
-    <details className="mt-3 rounded border border-tv-border bg-tv-bg/60">
-      <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-tv-text hover:bg-tv-panel/80">
-        Output cuối của Gemini (JSON) — kiểm tra dữ liệu
-      </summary>
-      <pre className="max-h-[min(70vh,36rem)] overflow-auto whitespace-pre-wrap break-words border-t border-tv-border p-3 font-mono text-[11px] leading-relaxed text-tv-text">
-        {text}
-      </pre>
-    </details>
-  );
-}
-
 async function loadPendingReviews(): Promise<{
   status: "ok";
   data: SignalEntryListResponse;
@@ -137,10 +102,8 @@ export default async function ReviewSignalEntriesPage() {
                   {entry.title ? <p className="text-sm text-tv-text">{entry.title}</p> : null}
                 </div>
 
-                <ReviewGeminiOutput payload={entry.payload} />
-
                 {signals.length === 0 ? (
-                  <p className="mt-2 text-sm text-tv-down">Entry này không có danh sách mã hợp lệ để publish.</p>
+                  <p className="text-sm text-tv-down">Entry này không có danh sách mã hợp lệ để publish.</p>
                 ) : (
                   <form action={publishAction.bind(null, entry.id)} className="space-y-3">
                     <div className="space-y-2">

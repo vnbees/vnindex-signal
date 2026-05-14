@@ -100,7 +100,7 @@ YÊU CẦU KẾT QUẢ:
 - Quy tắc xuất kết quả:
   * Nếu có >= 1 mã đạt đủ điều kiện bắt buộc và không vi phạm loại trừ: bắt buộc hiển thị đầy đủ danh sách mã đạt.
   * Chỉ được ghi "không có tín hiệu" khi sau khi lọc toàn bộ symbols, số mã đạt = 0.
-  * Nếu có dữ liệu screened_candidates trong snapshot (trước đây screened_top3), dùng để đối chiếu chéo; kết luận cuối cùng vẫn phải theo đúng 8 điều kiện bắt buộc + điều kiện loại trừ nêu ở trên (không thêm/không bớt điều kiện).
+  * Nếu có dữ liệu screened_top3 trong snapshot, dùng để đối chiếu chéo; kết luận cuối cùng vẫn phải theo đúng 8 điều kiện bắt buộc + điều kiện loại trừ nêu ở trên (không thêm/không bớt điều kiện).
 - Khuyến nghị quản lý rủi ro:
   * Stop-loss: -3%
   * Take-profit: +5%

@@ -710,7 +710,7 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
             candidates.append((score, row))
 
     candidates.sort(key=lambda x: x[0], reverse=True)
-    screened_candidates = [x[1] for x in candidates]
+    top3 = [x[1] for x in candidates[:3]]
 
     synced_at = datetime.now(timezone.utc).isoformat()
     payload: dict[str, Any] = {
@@ -728,7 +728,7 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
             "lookback_days_for_avg": 5,
         },
         "symbols": symbols_out,
-        "screened_candidates": screened_candidates,
+        "screened_top3": top3,
         "sync_errors": errors,
         "news_policy": {
             "window_days": NEWS_WINDOW_DAYS,
@@ -762,7 +762,7 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
         "errors_count": len(errors),
         "errors": errors[:50],
         "snapshot_top9_count": len(top9),
-        "screened_candidate_symbols": [r["symbol"] for r in screened_candidates],
+        "screened_top3_symbols": [r["symbol"] for r in top3],
     }
 
 
