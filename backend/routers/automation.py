@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 from pathlib import Path
 
@@ -12,6 +13,18 @@ from services.daily_automation_service import run_daily_balanced_automation
 
 router = APIRouter(tags=["automation"])
 _active_daily_run: asyncio.Task | None = None
+logger = logging.getLogger(__name__)
+
+
+def _log_background_automation_done(task: asyncio.Task) -> None:
+    if task.cancelled():
+        return
+    try:
+        exc = task.exception()
+    except asyncio.CancelledError:
+        return
+    if exc is not None:
+        logger.exception("daily-balanced automation background task failed", exc_info=exc)
 
 
 def _assert_token(x_automation_token: str | None) -> None:
@@ -98,7 +111,7 @@ async def trigger_daily_automation(
         raise HTTPException(status_code=409, detail="A daily automation run is already in progress")
 
     run_id = uuid.uuid4().hex
-    _active_daily_run = asyncio.create_task(
+    task = asyncio.create_task(
         _run_daily_automation_in_background(
             dry_run=dry_run,
             force=force,
@@ -106,6 +119,8 @@ async def trigger_daily_automation(
         ),
         name=f"daily-balanced-trigger-{run_id}",
     )
+    task.add_done_callback(_log_background_automation_done)
+    _active_daily_run = task
     return DailyAutomationTriggerResponse(
         ok=True,
         accepted=True,
