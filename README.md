@@ -200,9 +200,9 @@ Vào Railway Dashboard → service `backend` → tab **Variables**, thêm:
 | `CORS_ORIGINS` | `["https://<frontend-domain>.railway.app"]` |
 | `AUTOMATION_TOKEN` | Secret token để gọi endpoint automation (header `X-Automation-Token`) |
 | `AUTOMATION_BASE_URL` | `https://<backend-domain>.railway.app` |
-| `GOOGLE_GEMINI_API_KEY` | API key Gemini (không commit vào repo) |
-| `GEMINI_MODEL` | `gemini-2.0-flash` |
 | `AUTOMATION_HTTP_TIMEOUT_SECONDS` | `120` |
+| `GOOGLE_GEMINI_API_KEY` | (Tuỳ chọn) Chỉ cho script smoke `backend/scripts/debug_gemini_daily_io.py`; **job** `daily-balanced-run` không gọi Gemini |
+| `GEMINI_MODEL` | `gemini-2.0-flash` (kèm key ở trên khi chạy smoke) |
 
 ### Bước 5 — Deploy frontend
 
@@ -443,7 +443,7 @@ Server tự động:
 | `GET` | `/api/v1/stats/pnl?days=60` | Thống kê PnL tổng hợp |
 | `GET` | `/api/v1/stats/accuracy` | Win rate theo recommendation |
 | `GET` | `/api/v1/export/csv?from=2026-01-01` | Export CSV toàn bộ tín hiệu |
-| `POST` | `/api/v1/automation/daily-balanced-run` | Chạy pipeline tự động (bảo vệ bằng `X-Automation-Token`) |
+| `POST` | `/api/v1/automation/daily-balanced-run` | Pipeline balanced hàng ngày (snapshot + sector-flow đã sync; **không** Gemini; header `X-Automation-Token`) |
 
 ### Feedback (góp ý người dùng)
 

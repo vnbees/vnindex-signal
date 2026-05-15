@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 import uuid
 from dataclasses import dataclass
@@ -27,6 +26,12 @@ class ParsedSignalText:
 
 @dataclass
 class ParsedGeminiJson:
+    """Tên lịch sử: kết quả parse JSON theo schema Gemini cũ.
+
+    Luồng automation balanced hiện **không** gọi LLM; object đưa vào `_parse_gemini_json_output`
+    là dict synthetic (snapshot-only) để tái dùng pipeline ingest.
+    """
+
     title: str | None
     reference_date: date
     buy_signals: list[BuySignalIn]
@@ -176,98 +181,6 @@ def parse_signal_output_text(text: str, valid_symbols: set[str] | None = None) -
     )
 
 
-def _build_gemini_prompt(base_prompt: str, snapshot: dict[str, Any], sector_flow: dict[str, Any]) -> str:
-    compact_snapshot = _compact_snapshot_for_ai(snapshot)
-    compact_sector_flow = _compact_sector_flow_for_ai(sector_flow)
-    snapshot_json = json.dumps(compact_snapshot, ensure_ascii=False, separators=(",", ":"))
-    sector_json = json.dumps(compact_sector_flow, ensure_ascii=False, separators=(",", ":"))
-    return (
-        f"{base_prompt}\n\n"
-        "[DỮ LIỆU SNAPSHOT JSON]\n"
-        f"{snapshot_json}\n\n"
-        "[DỮ LIỆU SECTOR FLOW 5D JSON]\n"
-        f"{sector_json}\n\n"
-        "BẮT BUỘC trả về JSON object hợp lệ (không markdown, không text ngoài JSON) theo schema sau:\n"
-        "{\n"
-        '  "title": "string",\n'
-        '  "reference_date": "YYYY-MM-DD",\n'
-        '  "sector_flow_analysis": [\n'
-        "    {\n"
-        '      "sector": "string",\n'
-        '      "flow_today_vnd": number,\n'
-        '      "avg_5d_vnd": number,\n'
-        '      "pct_vs_5d": number\n'
-        "    }\n"
-        "  ],\n"
-        '  "selected_signals": [\n'
-        "    {\n"
-        '      "rank": number,\n'
-        '      "symbol": "AAA",\n'
-        '      "sector": "string|null",\n'
-        '      "price": number|null,\n'
-        '      "recommendation": "string|null",\n'
-        '      "why_selected": ["string", "..."]\n'
-        "    }\n"
-        "  ],\n"
-        '  "near_miss_signals": [\n'
-        "    {\n"
-        '      "symbol": "AAA",\n'
-        '      "sector": "string|null",\n'
-        '      "failed_conditions": ["string", "..."]\n'
-        "    }\n"
-        "  ],\n"
-        '  "analysis_notes": "string"\n'
-        "}\n"
-        "Ràng buộc: selected_signals không giới hạn số lượng, symbol phải thuộc dữ liệu snapshot."
-    )
-
-
-def _compact_snapshot_for_ai(snapshot: dict[str, Any]) -> dict[str, Any]:
-    payload = snapshot.get("payload") if isinstance(snapshot.get("payload"), dict) else snapshot
-    if not isinstance(payload, dict):
-        return {}
-    symbols = payload.get("symbols")
-    compact_symbols: list[dict[str, Any]] = []
-    if isinstance(symbols, list):
-        for item in symbols:
-            if not isinstance(item, dict):
-                continue
-            indicators = item.get("indicators") if isinstance(item.get("indicators"), dict) else {}
-            posts = item.get("posts_recent_7d") if isinstance(item.get("posts_recent_7d"), list) else []
-            compact_posts: list[dict[str, Any]] = []
-            for p in posts[:3]:
-                if isinstance(p, dict):
-                    compact_posts.append(
-                        {
-                            "title": p.get("title"),
-                            "summary": p.get("summary"),
-                            "published_at": p.get("published_at"),
-                        }
-                    )
-            compact_symbols.append(
-                {
-                    "symbol": item.get("symbol"),
-                    "sector": item.get("sector"),
-                    "indicators": {
-                        "trade_date": indicators.get("trade_date"),
-                        "price_close_vnd": indicators.get("price_close_vnd"),
-                        "rsi14": indicators.get("rsi14"),
-                        "macd_hist": indicators.get("macd_hist"),
-                        "sma5_over_sma20": indicators.get("sma5_over_sma20"),
-                        "adx14": indicators.get("adx14"),
-                        "volume_ratio": indicators.get("volume_ratio"),
-                        "total_volume_latest": indicators.get("total_volume_latest"),
-                        "avg_volume_5d": indicators.get("avg_volume_5d"),
-                    },
-                    "posts_recent_7d": compact_posts,
-                }
-            )
-    return {
-        "as_of_date": payload.get("as_of_date"),
-        "symbols": compact_symbols,
-    }
-
-
 def _extract_valid_symbols(snapshot: dict[str, Any]) -> set[str]:
     payload = snapshot.get("payload") if isinstance(snapshot.get("payload"), dict) else snapshot
     if not isinstance(payload, dict):
@@ -285,12 +198,47 @@ def _extract_valid_symbols(snapshot: dict[str, Any]) -> set[str]:
     return out
 
 
+def _reference_date_from_balanced_payloads(
+    snapshot_payload: dict[str, Any], sector_data: dict[str, Any]
+) -> date:
+    """Ưu tiên as_of_date từ snapshot sync, rồi sector-flow, cuối cùng date.today()."""
+    for src in (snapshot_payload, sector_data):
+        raw = src.get("as_of_date") if isinstance(src, dict) else None
+        if isinstance(raw, str) and raw.strip():
+            try:
+                return date.fromisoformat(raw.strip()[:10])
+            except ValueError:
+                continue
+    return date.today()
+
+
+def _build_snapshot_only_analysis_obj(reference_date: date) -> dict[str, Any]:
+    """
+    Object JSON giống schema output Gemini cũ để tái dùng `_parse_gemini_json_output`.
+    Không gọi model; các list rỗng kích hoạt fallback snapshot + sector mặc định + near-miss mặc định.
+    """
+    ref_iso = reference_date.isoformat()
+    return {
+        "title": f"TÍN HIỆU MUA BALANCED - NGÀY {reference_date.strftime('%d/%m/%Y')}",
+        "reference_date": ref_iso,
+        "selected_signals": [],
+        "sector_flow_analysis": [],
+        "near_miss_signals": [],
+        "analysis_notes": "Phân tích deterministic từ snapshot balanced đã sync (không LLM).",
+    }
+
+
 def _fallback_signals_from_snapshot(snapshot: dict[str, Any], valid_symbols: set[str]) -> list[BuySignalIn]:
     payload = snapshot.get("payload") if isinstance(snapshot.get("payload"), dict) else snapshot
     if not isinstance(payload, dict):
         return []
-    screened = payload.get("screened_top3")
-    if not isinstance(screened, list):
+    screened_all = payload.get("screened_all")
+    screened_top3 = payload.get("screened_top3")
+    if isinstance(screened_all, list) and len(screened_all) > 0:
+        screened: list[Any] = screened_all
+    elif isinstance(screened_top3, list):
+        screened = screened_top3
+    else:
         return []
     out: list[BuySignalIn] = []
     rank = 1
@@ -316,30 +264,6 @@ def _fallback_signals_from_snapshot(snapshot: dict[str, Any], valid_symbols: set
     return out
 
 
-def _compact_sector_flow_for_ai(sector_flow: dict[str, Any]) -> dict[str, Any]:
-    sectors = sector_flow.get("sectors")
-    compact: list[dict[str, Any]] = []
-    if isinstance(sectors, list):
-        for item in sectors:
-            if not isinstance(item, dict):
-                continue
-            points = item.get("points") if isinstance(item.get("points"), list) else []
-            compact.append(
-                {
-                    "sector": item.get("sector"),
-                    "points": [
-                        {
-                            "date": p.get("date"),
-                            "positive_money_flow_vnd": p.get("positive_money_flow_vnd"),
-                        }
-                        for p in points[-5:]
-                        if isinstance(p, dict)
-                    ],
-                }
-            )
-    return {"as_of_date": sector_flow.get("as_of_date"), "sessions": sector_flow.get("sessions"), "sectors": compact}
-
-
 async def _http_json(client: httpx.AsyncClient, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
     response = await client.request(method, url, **kwargs)
     response.raise_for_status()
@@ -347,84 +271,6 @@ async def _http_json(client: httpx.AsyncClient, method: str, url: str, **kwargs:
     if not isinstance(data, dict):
         raise ValueError(f"Unexpected JSON payload from {url}")
     return data
-
-
-async def _run_gemini(prompt: str) -> dict[str, Any]:
-    if not settings.google_gemini_api_key:
-        raise RuntimeError("Missing GOOGLE_GEMINI_API_KEY")
-    model = settings.gemini_model.strip() or "gemini-2.0-flash"
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        f"?key={settings.google_gemini_api_key}"
-    )
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.05,
-            "responseMimeType": "application/json",
-            "maxOutputTokens": 1800,
-        },
-    }
-    timeout = max(30, int(settings.automation_http_timeout_seconds))
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        data = await _http_json(client, "POST", url, json=payload)
-
-    candidates = data.get("candidates")
-    if not isinstance(candidates, list) or not candidates:
-        raise RuntimeError("Gemini response has no candidates")
-    content = candidates[0].get("content") if isinstance(candidates[0], dict) else None
-    parts = content.get("parts") if isinstance(content, dict) else None
-    if not isinstance(parts, list):
-        raise RuntimeError("Gemini response has invalid content parts")
-    chunks: list[str] = []
-    for part in parts:
-        if isinstance(part, dict) and isinstance(part.get("text"), str):
-            chunks.append(part["text"])
-    out = "\n".join(chunks).strip()
-    if not out:
-        raise RuntimeError("Gemini returned empty text")
-    try:
-        obj = json.loads(out)
-    except Exception:
-        repair_payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "text": (
-                                "Convert the following malformed JSON-like text into VALID JSON object only. "
-                                "Do not add markdown.\n\n"
-                                f"{out}"
-                            )
-                        }
-                    ]
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0.0,
-                "responseMimeType": "application/json",
-                "maxOutputTokens": 1800,
-            },
-        }
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            repaired_data = await _http_json(client, "POST", url, json=repair_payload)
-        repaired_candidates = repaired_data.get("candidates")
-        if not isinstance(repaired_candidates, list) or not repaired_candidates:
-            raise RuntimeError("Gemini JSON repair failed: no candidates")
-        repaired_content = repaired_candidates[0].get("content") if isinstance(repaired_candidates[0], dict) else None
-        repaired_parts = repaired_content.get("parts") if isinstance(repaired_content, dict) else None
-        repaired_text = ""
-        if isinstance(repaired_parts, list):
-            repaired_text = "\n".join(
-                [p.get("text") for p in repaired_parts if isinstance(p, dict) and isinstance(p.get("text"), str)]
-            ).strip()
-        try:
-            obj = json.loads(repaired_text)
-        except Exception as e:
-            raise RuntimeError(f"Gemini JSON parse failed: {e}") from e
-    if not isinstance(obj, dict):
-        raise RuntimeError("Gemini response is not a JSON object")
-    return obj
 
 
 def _render_raw_text_from_json(
@@ -599,6 +445,11 @@ def _parse_gemini_json_output(
     snapshot_payload: dict[str, Any],
     sector_flow_payload: dict[str, Any],
 ) -> ParsedGeminiJson:
+    """Parse object JSON theo schema cũ của Gemini (tên hàm giữ nguyên để tránh refactor rộng).
+
+    Daily automation chỉ truyền dict deterministic `_build_snapshot_only_analysis_obj`;
+    không có inference model trong luồng này.
+    """
     title = str(obj.get("title") or "").strip() or "TÍN HIỆU MUA BALANCED"
     ref_date = _parse_reference_date_value(obj.get("reference_date"))
     selected = obj.get("selected_signals") if isinstance(obj.get("selected_signals"), list) else []
@@ -641,6 +492,20 @@ def _parse_gemini_json_output(
         buy_signals = _fallback_signals_from_snapshot(snapshot_payload, valid_symbols)
     if not buy_signals:
         raise ValueError("Không tìm thấy buy_signals hợp lệ")
+    if not selected_rows:
+        for idx, sig in enumerate(buy_signals, start=1):
+            rk = sig.rank if sig.rank is not None else idx
+            why = list(sig.why_selected) if sig.why_selected else []
+            selected_rows.append(
+                {
+                    "rank": rk,
+                    "symbol": sig.symbol,
+                    "sector": sig.sector,
+                    "price": sig.price,
+                    "recommendation": sig.recommendation,
+                    "why_selected": why,
+                }
+            )
     sector_flow_rows = obj.get("sector_flow_analysis") if isinstance(obj.get("sector_flow_analysis"), list) else []
     near_miss_rows = obj.get("near_miss_signals") if isinstance(obj.get("near_miss_signals"), list) else []
     if not sector_flow_rows:
@@ -676,7 +541,8 @@ async def _already_ingested(db: AsyncSession, ref_date: date) -> bool:
         if not isinstance(payload, dict):
             continue
         source = str(payload.get("source") or "").strip().lower()
-        if source in {"cursor-agent", "automation-daily-gemini"}:
+        if source in {"cursor-agent", "automation-daily-gemini", "automation-daily-snapshot"}:
+            # automation-daily-gemini: bản ghi cũ trước khi bỏ Gemini; vẫn coi là đã chạy để idempotency.
             return True
     return False
 
@@ -686,9 +552,12 @@ async def run_daily_balanced_automation(
     *,
     dry_run: bool = False,
     force: bool = False,
-    use_mock_result: bool = False,
-    prompt_file_path: str | None,
 ) -> DailyAutomationResponse:
+    """Chạy pipeline balanced hàng ngày: refresh → sync → snapshot + sector-flow → ingest.
+
+    **Không** gọi Google Gemini. Phân tích là deterministic từ snapshot đã sync (`screened_all` / screened_top3)
+    và sector-flow; dict JSON chỉ để tương thích `_parse_gemini_json_output`.
+    """
     run_id = uuid.uuid4().hex
     steps: list[AutomationStepResult] = []
     base_url = settings.automation_base_url.rstrip("/")
@@ -735,50 +604,23 @@ async def run_daily_balanced_automation(
             )
         )
 
-        if prompt_file_path:
-            with open(prompt_file_path, "r", encoding="utf-8") as f:
-                base_prompt = f.read()
-        else:
-            base_prompt = (
-                "Tìm TOP tín hiệu mua BALANCED theo dữ liệu snapshot và sector-flow-5d. "
-                "Bắt buộc xuất tiêu đề có mẫu 'TÍN HIỆU MUA BALANCED - NGÀY dd/mm/yyyy' "
-                "và danh sách '#<rank>. <SYMBOL> - <SECTOR>' kèm giá hiện tại VND."
-            )
-        full_prompt = _build_gemini_prompt(base_prompt, snapshot_payload, sector_data)
+        ref_date = _reference_date_from_balanced_payloads(snapshot_payload, sector_data)
+        analysis_obj = _build_snapshot_only_analysis_obj(ref_date)
         valid_symbols = _extract_valid_symbols(snapshot_payload)
-        if use_mock_result:
-            today_iso = date.today().isoformat()
-            gemini_obj: dict[str, Any] = {
-                "title": f"TÍN HIỆU MUA BALANCED - NGÀY {date.today().strftime('%d/%m/%Y')}",
-                "reference_date": today_iso,
-                "sector_flow_analysis": [],
-                "selected_signals": [
-                    {
-                        "rank": 1,
-                        "symbol": "TIG" if "TIG" in valid_symbols else next(iter(valid_symbols), "VCB"),
-                        "sector": "Bất động sản",
-                        "price": 6700,
-                        "recommendation": "THEO DÕI MUA",
-                        "why_selected": ["Mock test"],
-                    }
-                ],
-                "near_miss_signals": [],
-                "analysis_notes": "Mock mode",
-            }
-        else:
-            gemini_obj = await _run_gemini(full_prompt)
-        gemini_json_str = json.dumps(gemini_obj, ensure_ascii=False)
         steps.append(
             AutomationStepResult(
-                name="run_gemini",
+                name="build_snapshot_analysis",
                 ok=True,
-                detail="Gemini generated analysis output" if not use_mock_result else "Mock analysis output generated",
-                payload={"chars": len(gemini_json_str), "mock_mode": use_mock_result},
+                detail="Built deterministic analysis object (snapshot-only, no LLM)",
+                payload={
+                    "reference_date": ref_date.isoformat(),
+                    "valid_symbol_count": len(valid_symbols),
+                },
             )
         )
 
         parsed_json = _parse_gemini_json_output(
-            gemini_obj,
+            analysis_obj,
             valid_symbols=valid_symbols,
             snapshot_payload=snapshot_payload,
             sector_flow_payload=sector_data,
@@ -793,7 +635,7 @@ async def run_daily_balanced_automation(
             AutomationStepResult(
                 name="parse_output",
                 ok=True,
-                detail="Parsed AI output into ingest payload",
+                detail="Parsed snapshot analysis into ingest payload",
                 payload={"reference_date": parsed.reference_date.isoformat(), "buy_signal_count": len(parsed.buy_signals)},
             )
         )
@@ -838,7 +680,8 @@ async def run_daily_balanced_automation(
         row = await db.get(SignalEntry, created_id)
         if row and isinstance(row.payload, dict):
             new_payload = dict(row.payload)
-            new_payload["source"] = "automation-daily-gemini"
+            # Nguồn mới phản ánh snapshot-only; `automation-daily-gemini` chỉ còn trong DB cũ + idempotency.
+            new_payload["source"] = "automation-daily-snapshot"
             meta = new_payload.get("meta")
             if not isinstance(meta, dict):
                 meta = {}

@@ -23,6 +23,9 @@ out/
 # Backtest CSV outputs (optional local artifacts)
 backend/scripts/backtest_*.csv
 
+# Gemini smoke-test artifacts (local only; may contain news/market data)
+backend/gemini_smoke/
+
 # Environment
 .env
 *.env

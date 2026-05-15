@@ -11,7 +11,14 @@ class BalancedSyncResponse(BaseModel):
     errors_count: int
     errors: list[dict[str, str]] = Field(default_factory=list)
     snapshot_top9_count: int = 0
-    screened_top3_symbols: list[str] = Field(default_factory=list)
+    screened_top3_symbols: list[str] = Field(
+        default_factory=list,
+        description="Ba mã đầu của screened_all (sorted theo score); không phải 'chỉ có 3 mã thỏa lọc'.",
+    )
+    screened_all_symbols: list[str] = Field(
+        default_factory=list,
+        description="Tất cả mã thỏa _passes_balanced_heuristic (sorted); screened_top3_symbols chỉ là 3 phần tử đầu.",
+    )
 
 
 class BalancedSnapshotResponse(BaseModel):

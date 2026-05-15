@@ -705,12 +705,15 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
             "posts_ingested_note": f"Last {NEWS_WINDOW_DAYS}d window ending {t.isoformat()} — review raw_json in DB for sentiment.",
         }
         symbols_out.append(row)
+        # "Điều kiện" ở đây = heuristic code (_passes_balanced_heuristic), không nhất thiết khớp từng mục prompt AI 8 điều.
         if _passes_balanced_heuristic(ind, sp):
             score = (sp or 0) + (ind.get("volume_ratio") or 1) * 2 + (ind.get("adx14") or 0) * 0.1
             candidates.append((score, row))
 
     candidates.sort(key=lambda x: x[0], reverse=True)
-    top3 = [x[1] for x in candidates[:3]]
+    screened_all = [x[1] for x in candidates]
+    # screened_top3 = prefix của screened_all (tương thích consumer cũ); toàn bộ mã thỏa lọc nằm trong screened_all.
+    top3 = screened_all[:3]
 
     synced_at = datetime.now(timezone.utc).isoformat()
     payload: dict[str, Any] = {
@@ -728,6 +731,7 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
             "lookback_days_for_avg": 5,
         },
         "symbols": symbols_out,
+        "screened_all": screened_all,
         "screened_top3": top3,
         "sync_errors": errors,
         "news_policy": {
@@ -763,6 +767,7 @@ async def run_balanced_sync(db: AsyncSession, token: str) -> dict[str, Any]:
         "errors": errors[:50],
         "snapshot_top9_count": len(top9),
         "screened_top3_symbols": [r["symbol"] for r in top3],
+        "screened_all_symbols": [r["symbol"] for r in screened_all],
     }
 
 

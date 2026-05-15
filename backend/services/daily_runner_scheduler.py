@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from datetime import date, datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -68,14 +67,11 @@ class DailyRunnerScheduler:
 
         self._last_attempt_at = datetime.now(_VN_TZ)
         logger.info("daily scheduler triggering automation for %s", ref_date.isoformat())
-        prompt_file = Path(__file__).resolve().parents[1] / "prompt-signal-cash-flow.md"
         async with AsyncSessionLocal() as db:
             await run_daily_balanced_automation(
                 db,
                 dry_run=False,
                 force=False,
-                use_mock_result=False,
-                prompt_file_path=str(prompt_file) if prompt_file.exists() else None,
             )
 
     async def _run_loop(self) -> None:

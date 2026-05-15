@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.signal_entry import BuySignalIn
 
@@ -38,4 +38,8 @@ class DailyAutomationTriggerResponse(BaseModel):
     detail: str
     dry_run: bool = False
     force: bool = False
-    use_mock_result: bool = False
+    use_mock_result: bool = Field(
+        default=False,
+        deprecated=True,
+        description="Deprecated; luôn false — automation balanced không còn mock Gemini.",
+    )
