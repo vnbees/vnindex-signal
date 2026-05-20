@@ -17,6 +17,7 @@ from routers import (
     signal_entries,
     signals,
     stats,
+    stock_positions,
 )
 from services.daily_runner_scheduler import DailyRunnerScheduler
 
@@ -50,6 +51,7 @@ app.include_router(balanced_data.router)
 app.include_router(signal_entries.router)
 app.include_router(newsfeed_comments.router)
 app.include_router(automation.router)
+app.include_router(stock_positions.router)
 
 @app.on_event("startup")
 async def ensure_feedback_table_exists():
@@ -112,6 +114,34 @@ async def ensure_feedback_table_exists():
         ]
         await session.execute(text(create_newsfeed_comments_sql))
         for stmt in newsfeed_comment_indexes:
+            await session.execute(text(stmt))
+        create_stock_positions_sql = """
+        CREATE TABLE IF NOT EXISTS stock_positions (
+            id SERIAL PRIMARY KEY,
+            symbol VARCHAR(16) NOT NULL,
+            signal_date DATE NOT NULL,
+            valuation_price NUMERIC(14, 2) NULL,
+            buy_price NUMERIC(14, 2) NOT NULL,
+            sell_price NUMERIC(14, 2) NULL,
+            sell_date DATE NULL,
+            current_price NUMERIC(14, 2) NULL,
+            price_as_of DATE NULL,
+            unrealized_pnl_pct NUMERIC(10, 4) NULL,
+            realized_pnl_pct NUMERIC(10, 4) NULL,
+            pnl_3d_pct NUMERIC(10, 4) NULL,
+            pnl_5d_pct NUMERIC(10, 4) NULL,
+            pnl_10d_pct NUMERIC(10, 4) NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        """
+        stock_position_indexes = [
+            "CREATE INDEX IF NOT EXISTS ix_stock_positions_symbol ON stock_positions (symbol);",
+            "CREATE INDEX IF NOT EXISTS ix_stock_positions_signal_date ON stock_positions (signal_date);",
+            "CREATE INDEX IF NOT EXISTS ix_stock_positions_sell_date ON stock_positions (sell_date);",
+        ]
+        await session.execute(text(create_stock_positions_sql))
+        for stmt in stock_position_indexes:
             await session.execute(text(stmt))
         await session.commit()
     await scheduler.start()

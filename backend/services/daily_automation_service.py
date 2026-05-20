@@ -575,6 +575,20 @@ async def run_daily_balanced_automation(
             )
         )
 
+        stock_refresh_url = f"{base_url}/api/v1/stock-positions/refresh-prices"
+        stock_refresh_data = await _http_json(client, "GET", stock_refresh_url)
+        steps.append(
+            AutomationStepResult(
+                name="refresh_stock_positions",
+                ok=True,
+                detail="Stock positions price refresh completed",
+                payload={
+                    "total": stock_refresh_data.get("total"),
+                    "updated": stock_refresh_data.get("updated"),
+                },
+            )
+        )
+
         sync_url = f"{base_url}/api/v1/balanced/sync"
         sync_data = await _http_json(client, "GET", sync_url)
         steps.append(

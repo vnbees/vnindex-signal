@@ -4,3 +4,4 @@ from .trading_calendar import TradingCalendar
 from .feedback import Feedback
 from .signal_entry import SignalEntry
 from .newsfeed_comment import NewsfeedComment
+from .stock_position import StockPosition

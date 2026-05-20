@@ -367,3 +367,84 @@ export async function getNewfeeds(limit = 20, offset = 0): Promise<NewfeedListRe
 export async function refreshNewfeedsPrices(limit = 20, offset = 0): Promise<NewfeedListResponse> {
   return fetchAPI<NewfeedListResponse>(`/api/v1/newfeeds/refresh-prices?limit=${limit}&offset=${offset}`);
 }
+
+export interface StockPosition {
+  id: number;
+  symbol: string;
+  signal_date: string;
+  valuation_price: number | null;
+  buy_price: number;
+  sell_price: number | null;
+  sell_date: string | null;
+  current_price: number | null;
+  price_as_of: string | null;
+  unrealized_pnl_pct: number | null;
+  realized_pnl_pct: number | null;
+  pnl_3d_pct: number | null;
+  pnl_5d_pct: number | null;
+  pnl_10d_pct: number | null;
+  status: "open" | "closed";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StockPositionListResponse {
+  items: StockPosition[];
+  total: number;
+}
+
+export interface StockPositionCreate {
+  symbol: string;
+  signal_date: string;
+  valuation_price?: number | null;
+  buy_price: number;
+}
+
+export interface StockPositionSell {
+  sell_price: number;
+  sell_date: string;
+}
+
+async function fetchAPIWithBody<T>(
+  path: string,
+  method: string,
+  body: unknown
+): Promise<T> {
+  const res = await fetch(`${getApiUrl()}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    let detail = `API error ${res.status}`;
+    try {
+      const err = (await res.json()) as { detail?: string | Array<{ msg?: string }> };
+      if (typeof err.detail === "string") detail = err.detail;
+      else if (Array.isArray(err.detail)) {
+        detail = err.detail.map((d) => d.msg ?? JSON.stringify(d)).join("; ");
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+export async function getStockPositions(status: "all" | "open" | "closed" = "all"): Promise<StockPositionListResponse> {
+  return fetchAPI<StockPositionListResponse>(`/api/v1/stock-positions?status=${status}`);
+}
+
+export async function createStockPosition(payload: StockPositionCreate): Promise<StockPosition> {
+  return fetchAPIWithBody<StockPosition>("/api/v1/stock-positions", "POST", payload);
+}
+
+export async function sellStockPosition(id: number, payload: StockPositionSell): Promise<StockPosition> {
+  return fetchAPIWithBody<StockPosition>(`/api/v1/stock-positions/${id}/sell`, "PATCH", payload);
+}
+
+export async function deleteStockPosition(id: number): Promise<void> {
+  await fetchAPIWithBody<void>(`/api/v1/stock-positions/${id}`, "DELETE", {});
+}

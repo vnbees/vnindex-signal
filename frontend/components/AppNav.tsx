@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/signals", label: "Tín hiệu" },
   { href: "/search-theo-ma", label: "Tìm kiếm theo mã" },
   { href: "/goi-y-vao-lenh", label: "Phân bổ vốn" },
+  { href: "/quan-ly-mua-ban", label: "Sổ mua bán" },
 ];
 
 function navClass(active: boolean) {
@@ -46,6 +47,8 @@ export function AppNav() {
                 ? pathname === "/goi-y-vao-lenh" || pathname?.startsWith("/goi-y-vao-lenh/")
               : href === "/search-theo-ma"
                 ? pathname === "/search-theo-ma" || pathname?.startsWith("/search-theo-ma/")
+              : href === "/quan-ly-mua-ban"
+                ? pathname === "/quan-ly-mua-ban" || pathname?.startsWith("/quan-ly-mua-ban/")
               : pathname === href || pathname?.startsWith(href);
           return (
             <Link key={href} href={href} className={navClass(!!active)}>
