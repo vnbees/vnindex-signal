@@ -40,6 +40,18 @@ function parseReviewSignals(payload: Record<string, unknown> | null): ReviewSign
     .filter((x) => x.symbol);
 }
 
+/** Chỉ hiển thị mã có cả dòng tiền ngành dương và KL phiên > TB5 (theo lý do trong payload). */
+function filterReviewDisplaySignals(signals: ReviewSignal[]): ReviewSignal[] {
+  return signals.filter((sig) => {
+    const reasons = sig.why_selected;
+    const hasSectorFlow = reasons.some((r) => /Dòng tiền ngành dương/i.test(r));
+    const hasVolumeAboveAvg5 = reasons.some((r) =>
+      /Khối lượng phiên mới nhất cao hơn trung bình 5 phiên/i.test(r)
+    );
+    return hasSectorFlow && hasVolumeAboveAvg5;
+  });
+}
+
 async function loadPendingReviews(): Promise<{
   status: "ok";
   data: SignalEntryListResponse;
@@ -83,6 +95,9 @@ export default async function ReviewSignalEntriesPage() {
         <p className="mt-1 text-sm text-tv-muted">
           Trang này không cần đăng nhập. Hệ thống chỉ đưa lên newsfeed sau khi bạn chọn mã và bấm publish.
         </p>
+        <p className="mt-1 text-sm text-tv-muted">
+          Chỉ hiển thị mã có dòng tiền ngành dương và khối lượng phiên mới nhất cao hơn trung bình 5 phiên.
+        </p>
       </header>
 
       {loaded.data.items.length === 0 ? (
@@ -92,7 +107,8 @@ export default async function ReviewSignalEntriesPage() {
       ) : (
         <div className="space-y-3">
           {loaded.data.items.map((entry) => {
-            const signals = parseReviewSignals(entry.payload);
+            const allSignals = parseReviewSignals(entry.payload);
+            const signals = filterReviewDisplaySignals(allSignals);
             return (
               <article key={entry.id} className="rounded-lg border border-tv-border bg-tv-panel p-4">
                 <div className="mb-3">
@@ -103,7 +119,11 @@ export default async function ReviewSignalEntriesPage() {
                 </div>
 
                 {signals.length === 0 ? (
-                  <p className="text-sm text-tv-down">Entry này không có danh sách mã hợp lệ để publish.</p>
+                  <p className="text-sm text-tv-down">
+                    {allSignals.length === 0
+                      ? "Entry này không có danh sách mã hợp lệ để publish."
+                      : `Không có mã nào thỏa bộ lọc (0/${allSignals.length} mã trong entry).`}
+                  </p>
                 ) : (
                   <form action={publishAction.bind(null, entry.id)} className="space-y-3">
                     <div className="space-y-2">
