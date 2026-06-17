@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models.signal_entry import SignalEntry
+from schemas.signal_entry import BuySignalIn
 from schemas.review_v2 import (
+    ReviewV2BuySignal,
     ReviewV2CandidatesResponse,
     ReviewV2PublishRequest,
     ReviewV2PublishResponse,
@@ -16,6 +18,18 @@ from services.fireant_quote_service import require_fireant_token
 from services.review_v2_service import compute_review_v2_candidates
 
 router = APIRouter(tags=["review-v2"])
+
+
+def _to_newsfeed_buy_signal(sig: ReviewV2BuySignal) -> dict:
+    """Map review-v2 signal to newsfeed payload (BuySignalIn rejects extra fields)."""
+    return BuySignalIn(
+        rank=sig.rank,
+        symbol=sig.symbol,
+        sector=sig.sector,
+        recommendation=sig.recommendation,
+        price=sig.price,
+        why_selected=sig.why_selected or None,
+    ).model_dump(mode="json")
 
 
 @router.get(
@@ -70,7 +84,7 @@ async def publish_review_v2(
             detail=f"symbols not in current review-v2 candidates: {', '.join(invalid)}",
         )
 
-    selected = [sig.model_dump(mode="json") for sig in candidates.buy_signals if sig.symbol in requested]
+    selected = [_to_newsfeed_buy_signal(sig) for sig in candidates.buy_signals if sig.symbol in requested]
     if not selected:
         raise HTTPException(status_code=400, detail="no symbols selected for publish")
 
