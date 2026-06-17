@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.0-flash"
     automation_http_timeout_seconds: int = 120
     automation_allow_force_rerun: bool = False
+    fireant_api_base: str = "https://api.fireant.vn"
+    review_v2_cache_ttl_seconds: int = 900
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

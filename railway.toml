@@ -17,6 +17,8 @@ API_SECRET_KEY = "${{API_SECRET_KEY}}"
 PORT = "8000"
 # Theo domain public của frontend (custom domain + apex) để trình duyệt gọi API không bị CORS.
 CORS_ORIGINS = '["https://${{frontend.RAILWAY_PUBLIC_DOMAIN}}","https://www.viistock.io.vn","https://viistock.io.vn"]'
+FIREANT_API_BASE = "https://api.fireant.vn"
+REVIEW_V2_CACHE_TTL_SECONDS = "900"
 
 [[services]]
 name = "frontend"

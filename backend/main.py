@@ -14,6 +14,7 @@ from routers import (
     health,
     newsfeed_comments,
     price_updates,
+    review_v2,
     signal_entries,
     signals,
     stats,
@@ -49,6 +50,7 @@ app.include_router(export.router)
 app.include_router(feedback.router)
 app.include_router(balanced_data.router)
 app.include_router(signal_entries.router)
+app.include_router(review_v2.router)
 app.include_router(newsfeed_comments.router)
 app.include_router(automation.router)
 app.include_router(stock_positions.router)
