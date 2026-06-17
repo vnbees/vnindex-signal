@@ -436,7 +436,7 @@ def _fallback_why_selected(symbol: str, snapshot_row: dict[str, Any] | None) -> 
     sector_flow_pct = _f(snapshot_row.get("sector_flow_pct"))
     if sector_flow_pct is not None and sector_flow_pct > 0:
         reasons.append(f"Dòng tiền ngành dương so với TB5 ({sector_flow_pct:.2f}%).")
-    return reasons[:6] if reasons else ["Đạt bộ lọc kỹ thuật/sector-flow theo snapshot hiện tại."]
+    return reasons if reasons else ["Đạt bộ lọc kỹ thuật/sector-flow theo snapshot hiện tại."]
 
 
 def _parse_gemini_json_output(

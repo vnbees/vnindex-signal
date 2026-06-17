@@ -8,6 +8,7 @@ from datetime import date
 from services.daily_automation_service import (
     _build_snapshot_only_analysis_obj,
     _fallback_signals_from_snapshot,
+    _fallback_why_selected,
     _parse_gemini_json_output,
     _reference_date_from_balanced_payloads,
 )
@@ -76,6 +77,26 @@ class ParseSnapshotOnlySyntheticTests(unittest.TestCase):
         self.assertEqual(len(out.buy_signals), 2)
         self.assertIn("AAA", out.raw_text)
         self.assertIn("BBB", out.raw_text)
+
+
+class FallbackWhySelectedTests(unittest.TestCase):
+    def test_returns_all_matching_reasons_without_cap(self) -> None:
+        row = {
+            "sector_flow_pct": 12.5,
+            "indicators": {
+                "rsi14": 40.0,
+                "macd_hist": 1.5,
+                "sma5_over_sma20": 0.95,
+                "adx14": 20.0,
+                "volume_ratio": 1.2,
+                "total_volume_latest": 500_000,
+                "avg_volume_5d": 400_000,
+            },
+        }
+        why = _fallback_why_selected("AAA", row)
+        self.assertEqual(len(why), 8)
+        self.assertTrue(any("Dòng tiền ngành dương" in r for r in why))
+        self.assertTrue(any("Khối lượng phiên mới nhất cao hơn trung bình 5 phiên" in r for r in why))
 
 
 if __name__ == "__main__":

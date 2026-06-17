@@ -57,8 +57,8 @@ class ReviewV2DisplayFilterTests(unittest.TestCase):
         }
         self.assertFalse(passes_review_display_filter(row))
 
-    def test_v2_superset_when_v1_text_truncated(self) -> None:
-        """Struct v2 can include symbols v1 misses when why_selected lacks both lines (cap 6)."""
+    def test_v2_superset_when_v1_text_missing_display_lines(self) -> None:
+        """Struct v2 can include symbols v1 misses when why_selected lacks both display lines."""
         v1_signals = [
             {
                 "symbol": "AAA",
